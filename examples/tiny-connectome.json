@@ -1,0 +1,19 @@
+{
+  "nodes": [
+    {"id": "sensor", "threshold": 0.5, "leak": 0.0, "bias": 1.0},
+    "out-0", "out-1", "out-2", "out-3",
+    "out-4", "out-5", "out-6", "out-7"
+  ],
+  "edges": [
+    ["sensor", "out-0", 1.0],
+    ["sensor", "out-1", 1.0],
+    ["sensor", "out-2", 1.0],
+    ["sensor", "out-3", 1.0],
+    ["sensor", "out-4", 1.0],
+    ["sensor", "out-5", 1.0],
+    ["sensor", "out-6", 1.0],
+    ["sensor", "out-7", 1.0]
+  ],
+  "inputs": ["sensor"],
+  "outputs": ["out-0", "out-1", "out-2", "out-3", "out-4", "out-5", "out-6", "out-7"]
+}
