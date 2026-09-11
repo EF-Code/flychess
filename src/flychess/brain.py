@@ -26,6 +26,7 @@ PIECE_PLANES: tuple[chess.PieceType, ...] = (
     chess.QUEEN,
     chess.KING,
 )
+SURROGATE_ACTIVITY_THRESHOLD = 0.001
 
 
 class FlyBrain(Protocol):
@@ -112,6 +113,29 @@ def _action_features(board: chess.Board, move: chess.Move) -> tuple[float, ...]:
     )
 
 
+@dataclass(frozen=True, slots=True)
+class MoveCandidate:
+    """One legal move considered by a fly policy."""
+
+    uci: str
+    san: str
+    score: float
+
+
+@dataclass(frozen=True, slots=True)
+class DecisionReadout:
+    """Observable policy telemetry for one fly decision.
+
+    This is intentionally a compact readout of candidate scores and neural
+    activity. It is not a claim about private cognition or hidden reasoning.
+    """
+
+    policy: str
+    selected_uci: str
+    candidates: tuple[MoveCandidate, ...]
+    activity: tuple[tuple[str, float], ...] = ()
+
+
 @dataclass
 class SurrogateFlyBrain:
     """A deterministic recurrent policy for end-to-end plumbing.
@@ -134,6 +158,13 @@ class SurrogateFlyBrain:
         self._hidden = [0.0] * self.hidden_size
         self._reward_trace = 0.0
         self._step = 0
+        self._last_readout: DecisionReadout | None = None
+
+    @property
+    def last_readout(self) -> DecisionReadout | None:
+        """Return the latest observable candidate-move readout."""
+
+        return self._last_readout
 
     def _weight(self, index: int) -> float:
         # Stable pseudo-random structure without a model file or RNG state.
@@ -170,7 +201,25 @@ class SurrogateFlyBrain:
             reward_bias = 0.04 * self._reward_trace * (action[1] - action[0])
             return neural + reflex + novelty + reward_bias, move.uci()
 
-        return max(moves, key=score)
+        ranked = sorted(moves, key=score, reverse=True)
+        self._last_readout = DecisionReadout(
+            policy=type(self).__name__,
+            selected_uci=ranked[0].uci(),
+            candidates=tuple(
+                MoveCandidate(uci=move.uci(), san=board.san(move), score=score(move)[0])
+                for move in ranked[:5]
+            ),
+            activity=(
+                (
+                    "active_nodes",
+                    float(sum(abs(value) >= SURROGATE_ACTIVITY_THRESHOLD for value in self._hidden)),
+                ),
+                ("node_count", float(len(self._hidden))),
+                ("mean_abs", sum(abs(value) for value in self._hidden) / len(self._hidden)),
+                ("peak", max(abs(value) for value in self._hidden)),
+            ),
+        )
+        return ranked[0]
 
     def observe_reward(self, reward: float) -> None:
         """Keep a decaying trace for future decoder/plasticity experiments."""

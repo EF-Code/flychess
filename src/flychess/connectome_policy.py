@@ -16,7 +16,7 @@ from typing import Sequence
 
 import chess
 
-from .brain import encode_board
+from .brain import DecisionReadout, MoveCandidate, encode_board
 from .connectome import Connectome, ConnectomeValidationError
 
 
@@ -55,6 +55,7 @@ class ConnectomeFlyBrain:
             raise ConnectomePolicyError("connectome must declare at least one output port")
         self._reward_trace = 0.0
         self._positions = 0
+        self._last_readout: DecisionReadout | None = None
 
     @property
     def positions_seen(self) -> int:
@@ -64,12 +65,19 @@ class ConnectomeFlyBrain:
     def reward_trace(self) -> float:
         return self._reward_trace
 
+    @property
+    def last_readout(self) -> DecisionReadout | None:
+        """Return the latest observable candidate-move readout."""
+
+        return self._last_readout
+
     def reset(self) -> None:
         """Reset graph state and adapter counters for a fresh experiment."""
 
         self.graph.reset()
         self._reward_trace = 0.0
         self._positions = 0
+        self._last_readout = None
 
     def _stimulus(self, board: chess.Board) -> dict[str, float]:
         sensors = encode_board(board)
@@ -105,7 +113,27 @@ class ConnectomeFlyBrain:
         except ConnectomeValidationError as exc:
             raise ConnectomePolicyError(str(exc)) from exc
         self._positions += 1
-        return max(moves, key=lambda move: self._move_score(board, move, outputs))
+        ranked = sorted(moves, key=lambda move: self._move_score(board, move, outputs), reverse=True)
+        activity = tuple(self.graph.node_activity.values())
+        self._last_readout = DecisionReadout(
+            policy=type(self).__name__,
+            selected_uci=ranked[0].uci(),
+            candidates=tuple(
+                MoveCandidate(
+                    uci=move.uci(),
+                    san=board.san(move),
+                    score=self._move_score(board, move, outputs)[0],
+                )
+                for move in ranked[:5]
+            ),
+            activity=(
+                ("active_nodes", float(sum(value != 0.0 for value in activity))),
+                ("node_count", float(len(activity))),
+                ("output_spikes", float(sum(self.graph.readout_vector(source="spikes")))),
+                ("peak", max(activity, default=0.0)),
+            ),
+        )
+        return ranked[0]
 
     def observe_reward(self, reward: float) -> None:
         if isinstance(reward, bool) or not isinstance(reward, (int, float)):
