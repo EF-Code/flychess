@@ -14,12 +14,14 @@ from pathlib import Path
 import chess
 import pytest
 
-from flychess.game import GameResult, MoveRecord
+from flychess.brain import DecisionReadout, MoveCandidate
+from flychess.game import DecisionRecord, GameResult, MoveRecord
 from flychess.web import (
     DEFAULT_HOST,
     GameOptions,
     create_server,
     parse_game_options,
+    result_to_state,
 )
 
 
@@ -146,6 +148,31 @@ def test_post_game_invokes_server_callback_and_returns_trace() -> None:
         assert payload["move_count"] == 1
         assert payload["recent_moves"][0]["uci"] == "e2e4"
         assert payload["fen"] != chess.Board().fen()
+
+
+def test_web_state_includes_bounded_decision_readout() -> None:
+    board = chess.Board()
+    readout = DecisionReadout(
+        policy="SurrogateFlyBrain",
+        selected_uci="e2e4",
+        candidates=(
+            MoveCandidate(uci="e2e4", san="e4", score=0.5),
+            MoveCandidate(uci="d2d4", san="d4", score=0.25),
+        ),
+        activity=(("active_nodes", 4.0), ("node_count", 32.0)),
+    )
+    state = result_to_state(
+        GameResult(
+            board=board,
+            max_plies=4,
+            decision_trace=[DecisionRecord(ply=1, fen=board.fen(), readout=readout)],
+        ),
+        GameOptions(depth=2, max_plies=4, fly_color="white", seed=17),
+    )
+
+    assert state["decision_trace"][0]["selected_uci"] == "e2e4"
+    assert state["decision_trace"][0]["candidates"][0]["san"] == "e4"
+    assert state["decision_trace"][0]["activity"]["active_nodes"] == 4.0
 
 
 def test_invalid_post_does_not_invoke_callback() -> None:

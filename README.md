@@ -13,6 +13,7 @@ The repository contains a runnable local experiment:
 - legal-move validation through `python-chess`;
 - a real Stockfish UCI opponent;
 - a bounded command-line game loop, replay recorder, and local browser UI;
+- a bounded fly decision readout showing the top legal candidates and policy activity;
 - tests covering graph validation, replay tampering, HTTP boundaries, and engine integration.
 
 The surrogate is deliberately not presented as a biological fly brain. A
@@ -44,6 +45,11 @@ Serve the browser UI locally:
 
 The server binds to `127.0.0.1` by default. Open the printed URL and use the
 bounded game form to run an experiment.
+
+After a run, the browser shows the latest fly decisions in the **Fly decision
+readout** panel: up to five legal candidates, their policy scores, the selected
+move, and compact activity metrics. This is observable policy telemetry, not a
+literal private chain-of-thought or evidence of biological cognition.
 
 Record a replayable game:
 

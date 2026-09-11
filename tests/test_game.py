@@ -18,6 +18,12 @@ def test_game_loop_keeps_both_players_legal() -> None:
     assert result.moves[0].fen_before == chess.Board().fen()
     assert result.moves[-1].fen_after == result.board.fen()
     assert result.stopped_at_limit
+    assert result.decision_trace
+    assert all(decision.readout.selected_uci for decision in result.decision_trace)
+    assert all(
+        decision.fen == move.fen_before
+        for decision, move in zip(result.decision_trace, result.moves[::2])
+    )
 
 
 def test_game_loop_rejects_invalid_bound() -> None:

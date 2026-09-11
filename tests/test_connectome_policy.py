@@ -26,6 +26,10 @@ def test_connectome_policy_stimulates_graph_and_returns_legal_move() -> None:
     assert graph.steps_run == 2
     assert brain.positions_seen == 1
     assert any(value == 1.0 for value in graph.readout().values())
+    assert brain.last_readout is not None
+    assert brain.last_readout.selected_uci == move.uci()
+    assert len(brain.last_readout.candidates) == 5
+    assert dict(brain.last_readout.activity)["node_count"] == len(graph.node_ids)
 
 
 def test_connectome_policy_preserves_state_until_explicit_reset() -> None:

@@ -14,6 +14,12 @@ def test_surrogate_brain_returns_a_legal_move() -> None:
     brain = SurrogateFlyBrain(seed=3)
     move = brain.select_move(board)
     assert move in board.legal_moves
+    assert brain.last_readout is not None
+    assert brain.last_readout.selected_uci == move.uci()
+    assert 1 <= len(brain.last_readout.candidates) <= 5
+    legal_uci = {legal.uci() for legal in board.legal_moves}
+    assert all(candidate.uci in legal_uci for candidate in brain.last_readout.candidates)
+    assert brain.last_readout.activity[0][0] == "active_nodes"
 
 
 def test_surrogate_brain_is_deterministic_for_same_seed() -> None:
