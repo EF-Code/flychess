@@ -19,4 +19,3 @@ def test_surrogate_brain_returns_a_legal_move() -> None:
 def test_surrogate_brain_is_deterministic_for_same_seed() -> None:
     board = chess.Board()
     assert SurrogateFlyBrain(seed=19).select_move(board) == SurrogateFlyBrain(seed=19).select_move(board)
-

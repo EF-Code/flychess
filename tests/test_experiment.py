@@ -178,4 +178,3 @@ def test_reader_rejects_san_sequence_and_final_outcome_tampering(tmp_path: Path)
     _write_lines(log_path, outcome_tampered)
     with pytest.raises(ReplayValidationError, match="recorded result"):
         read_experiment(log_path)
-

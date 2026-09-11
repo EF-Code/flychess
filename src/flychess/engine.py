@@ -45,4 +45,3 @@ class StockfishEngine:
 
     def __exit__(self, _exc_type, _exc, _tb) -> None:
         self.close()
-

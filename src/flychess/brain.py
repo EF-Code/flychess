@@ -176,4 +176,3 @@ class SurrogateFlyBrain:
         """Keep a decaying trace for future decoder/plasticity experiments."""
 
         self._reward_trace = 0.9 * self._reward_trace + float(reward)
-

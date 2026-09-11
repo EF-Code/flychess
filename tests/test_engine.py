@@ -12,4 +12,3 @@ def test_stockfish_returns_a_legal_move() -> None:
     with StockfishEngine(depth=1) as engine:
         move = engine.choose_move(board)
     assert move in board.legal_moves
-
