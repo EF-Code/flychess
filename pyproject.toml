@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flychess"
+version = "0.1.0"
+description = "A simulated fruit-fly brain playing chess against Stockfish"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "python-chess>=1.999",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+]
+
+[project.scripts]
+flychess = "flychess.cli:main"
+flychess-web = "flychess.web:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.data-files]
+"share/flychess/web" = ["web/index.html", "web/app.js", "web/style.css"]
