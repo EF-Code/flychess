@@ -15,6 +15,8 @@
   const outcomeElement = document.getElementById("outcome");
   const boundElement = document.getElementById("bound");
   const fenElement = document.getElementById("fen");
+  const thoughtsElement = document.getElementById("thoughts");
+  const thoughtCountElement = document.getElementById("thought-count");
   const movesElement = document.getElementById("moves");
   const form = document.getElementById("game-form");
   const startButton = document.getElementById("start-button");
@@ -113,6 +115,96 @@
     });
   }
 
+  function activityLabel(activity) {
+    const labels = {
+      active_nodes: "active",
+      node_count: "nodes",
+      output_spikes: "output spikes",
+      mean_abs: "mean",
+      peak: "peak"
+    };
+    return Object.keys(activity || {}).map(function (key) {
+      const value = Number(activity[key]);
+      if (!Number.isFinite(value)) return null;
+      const formatted = Number.isInteger(value) ? String(value) : value.toFixed(3);
+      return (labels[key] || key.replace(/_/g, " ")) + " " + formatted;
+    }).filter(Boolean).join(" · ");
+  }
+
+  function renderThoughts(state) {
+    const trace = state.decision_trace || [];
+    thoughtsElement.replaceChildren();
+    thoughtCountElement.textContent = String(trace.length) +
+      (trace.length === 1 ? " decision" : " decisions");
+    if (!trace.length) {
+      const empty = document.createElement("p");
+      empty.className = "empty-state";
+      empty.textContent = "No fly decisions yet. Start an experiment.";
+      thoughtsElement.appendChild(empty);
+      return;
+    }
+
+    trace.slice().reverse().forEach(function (decision) {
+      const block = document.createElement("article");
+      block.className = "thought-block";
+
+      const heading = document.createElement("div");
+      heading.className = "thought-heading";
+      const turn = document.createElement("span");
+      turn.textContent = "PLY " + String(decision.ply || "?");
+      const selected = document.createElement("strong");
+      const selectedCandidate = (decision.candidates || []).find(function (candidate) {
+        return candidate.uci === decision.selected_uci;
+      });
+      selected.textContent = "selected " +
+        (selectedCandidate && selectedCandidate.san || decision.selected_uci || "?");
+      heading.append(turn, selected);
+      block.appendChild(heading);
+
+      const activity = activityLabel(decision.activity);
+      if (activity) {
+        const activityLine = document.createElement("p");
+        activityLine.className = "thought-activity";
+        activityLine.textContent = activity;
+        block.appendChild(activityLine);
+      }
+
+      const candidates = decision.candidates || [];
+      const scores = candidates.map(function (candidate) { return Number(candidate.score); });
+      const finiteScores = scores.filter(Number.isFinite);
+      const minimum = finiteScores.length ? Math.min.apply(null, finiteScores) : 0;
+      const maximum = finiteScores.length ? Math.max.apply(null, finiteScores) : 1;
+      const range = maximum - minimum;
+      const candidateList = document.createElement("div");
+      candidateList.className = "candidate-list";
+      candidates.forEach(function (candidate, index) {
+        const row = document.createElement("div");
+        row.className = "candidate-row" +
+          (candidate.uci === decision.selected_uci ? " selected" : "");
+        const label = document.createElement("div");
+        label.className = "candidate-label";
+        const move = document.createElement("strong");
+        move.textContent = candidate.san || candidate.uci || "?";
+        const uci = document.createElement("span");
+        uci.textContent = candidate.uci || "";
+        label.append(move, uci);
+        const score = document.createElement("span");
+        score.className = "candidate-score";
+        const numericScore = Number(candidate.score);
+        score.textContent = Number.isFinite(numericScore) ? numericScore.toFixed(3) : "—";
+        const bar = document.createElement("span");
+        const normalized = range > 0 && Number.isFinite(numericScore) ?
+          (numericScore - minimum) / range : 0.65;
+        const level = Math.max(1, Math.min(10, Math.round(normalized * 9) + 1));
+        bar.className = "candidate-bar level-" + String(level);
+        row.append(label, score, bar);
+        candidateList.appendChild(row);
+      });
+      block.appendChild(candidateList);
+      thoughtsElement.appendChild(block);
+    });
+  }
+
   function formatStatus(status) {
     return (status || "ready").replace(/_/g, " ").toUpperCase();
   }
@@ -121,6 +213,7 @@
     if (!state || !state.fen) return;
     renderBoard(state);
     renderMoves(state);
+    renderThoughts(state);
     const turn = (state.fen.split(" ")[1] || "w") === "w" ? "White" : "Black";
     turnElement.textContent = turn + " to move";
     statusPill.textContent = formatStatus(state.status);

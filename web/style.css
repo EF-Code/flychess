@@ -104,7 +104,7 @@ h2 { margin-bottom: 0; font-size: 1.08rem; letter-spacing: -0.025em; }
 .legend-swatch.dark { background: var(--warm); }
 
 .sidebar { display: grid; gap: 14px; }
-.run-card, .status-card, .moves-card, .fen-card { padding: 20px; }
+.run-card, .status-card, .thoughts-card, .moves-card, .fen-card { padding: 20px; }
 .run-card h2 { font-size: 1.38rem; }
 .card-copy, .status-message { margin: 12px 0 17px; color: var(--muted); font-size: 0.82rem; line-height: 1.55; }
 .surrogate-note { display: flex; gap: 10px; margin: 0 0 19px; padding: 11px 12px; border-left: 2px solid var(--accent); background: rgba(201, 245, 106, 0.055); color: #bbc5be; font-size: 0.73rem; line-height: 1.45; }
@@ -141,6 +141,30 @@ input:focus, select:focus { border-color: var(--accent-strong); box-shadow: 0 0 
 .move-actor { display: inline-block; width: 5.5rem; color: var(--faint); font-family: inherit; font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.07em; }
 .move-uci { margin-left: 7px; color: var(--faint); font-size: 0.65rem; }
 .empty-state { color: var(--faint); font-family: inherit; font-size: 0.73rem; }
+.thought-disclaimer { margin-bottom: 13px; font-size: 0.72rem; }
+.thought-list { display: grid; gap: 10px; max-height: 480px; overflow: auto; margin-top: 13px; padding-right: 3px; }
+.thought-block { padding: 11px; border: 1px solid rgba(201, 245, 106, 0.11); border-radius: 10px; background: rgba(201, 245, 106, 0.035); }
+.thought-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--faint); font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.62rem; letter-spacing: 0.06em; }
+.thought-heading strong { color: var(--accent); font-size: 0.7rem; letter-spacing: 0; }
+.thought-activity { margin: 7px 0 10px; color: var(--faint); font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.62rem; }
+.candidate-list { display: grid; gap: 5px; }
+.candidate-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 8px; overflow: hidden; padding: 6px 7px; border-radius: 6px; color: var(--muted); background: rgba(23, 29, 30, 0.75); font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.66rem; }
+.candidate-row.selected { color: var(--ink); outline: 1px solid rgba(201, 245, 106, 0.38); }
+.candidate-label { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+.candidate-label strong { color: inherit; font-size: 0.72rem; }
+.candidate-label span { overflow: hidden; color: var(--faint); text-overflow: ellipsis; }
+.candidate-score { color: var(--warm); text-align: right; }
+.candidate-bar { display: block; grid-column: 1 / -1; height: 3px; border-radius: 99px; background: var(--accent); opacity: 0.72; }
+.candidate-bar.level-1 { width: 10%; opacity: 0.22; }
+.candidate-bar.level-2 { width: 20%; opacity: 0.28; }
+.candidate-bar.level-3 { width: 30%; opacity: 0.34; }
+.candidate-bar.level-4 { width: 40%; opacity: 0.4; }
+.candidate-bar.level-5 { width: 50%; opacity: 0.46; }
+.candidate-bar.level-6 { width: 60%; opacity: 0.52; }
+.candidate-bar.level-7 { width: 70%; opacity: 0.58; }
+.candidate-bar.level-8 { width: 80%; opacity: 0.64; }
+.candidate-bar.level-9 { width: 90%; opacity: 0.7; }
+.candidate-bar.level-10 { width: 100%; opacity: 0.78; }
 .fen-value { display: block; margin-top: 14px; padding: 11px; overflow-wrap: anywhere; border-radius: 8px; color: #bdc9c0; background: var(--panel-raised); font-size: 0.69rem; line-height: 1.55; }
 .footer { display: flex; justify-content: space-between; gap: 20px; margin-top: 20px; color: var(--faint); font-size: 0.67rem; }
 

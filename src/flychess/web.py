@@ -26,7 +26,7 @@ from .brain import SurrogateFlyBrain
 from .connectome import load_connectome
 from .connectome_policy import ConnectomeFlyBrain
 from .engine import StockfishEngine
-from .game import GameResult, MoveRecord, play_game
+from .game import DecisionRecord, GameResult, MoveRecord, play_game
 
 
 DEFAULT_HOST = "127.0.0.1"
@@ -41,6 +41,8 @@ MIN_SEED = -1_000_000
 MAX_SEED = 1_000_000
 MAX_REQUEST_BYTES = 16 * 1024
 MAX_RECENT_MOVES = 24
+MAX_DECISION_TRACE = 12
+MAX_CANDIDATES = 5
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _CHECKOUT_WEB_ROOT = _PROJECT_ROOT / "web"
@@ -245,6 +247,25 @@ def _move_payload(record: MoveRecord) -> dict[str, Any]:
     }
 
 
+def _decision_payload(record: DecisionRecord) -> dict[str, Any]:
+    readout = record.readout
+    return {
+        "ply": record.ply,
+        "fen": record.fen,
+        "policy": readout.policy,
+        "selected_uci": readout.selected_uci,
+        "candidates": [
+            {
+                "uci": candidate.uci,
+                "san": candidate.san,
+                "score": round(candidate.score, 6),
+            }
+            for candidate in readout.candidates[:MAX_CANDIDATES]
+        ],
+        "activity": {name: round(value, 6) for name, value in readout.activity},
+    }
+
+
 def _base_state(options: GameOptions, *, status: str, message: str) -> dict[str, Any]:
     is_surrogate = options.policy == "surrogate"
     return {
@@ -253,6 +274,7 @@ def _base_state(options: GameOptions, *, status: str, message: str) -> dict[str,
         "message": message,
         "fen": chess.Board().fen(),
         "recent_moves": [],
+        "decision_trace": [],
         "move_count": 0,
         "outcome": None,
         "outcome_detail": None,
@@ -294,6 +316,9 @@ def result_to_state(result: GameResult, options: GameOptions) -> dict[str, Any]:
         {
             "fen": result.board.fen(),
             "recent_moves": [_move_payload(record) for record in result.moves[-MAX_RECENT_MOVES:]],
+            "decision_trace": [
+                _decision_payload(record) for record in result.decision_trace[-MAX_DECISION_TRACE:]
+            ],
             "move_count": len(result.moves),
             "outcome": outcome_code,
             "outcome_detail": outcome_detail,
