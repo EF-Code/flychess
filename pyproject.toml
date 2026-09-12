@@ -16,6 +16,9 @@ dependencies = [
 dev = [
   "pytest>=8",
 ]
+calibration = [
+  "pyarrow>=15",
+]
 
 [project.scripts]
 flychess = "flychess.cli:main"

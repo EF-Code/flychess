@@ -14,6 +14,8 @@ The repository contains a runnable local experiment:
 - a real Stockfish UCI opponent;
 - a bounded command-line game loop, replay recorder, and local browser UI;
 - a bounded fly decision readout showing the top legal candidates and policy activity;
+- a provenance-locked MaleCNS calibration importer for filtered subgraphs;
+- a sparse sign-aware LIF dynamics backend for imported calibration subgraphs;
 - tests covering graph validation, replay tampering, HTTP boundaries, and engine integration.
 
 The surrogate is deliberately not presented as a biological fly brain. A
@@ -83,12 +85,15 @@ Useful options:
 
 ## Development roadmap
 
-1. Add a provenance-aware importer for MaleCNS/FlyWire releases.
-2. Replace the generic graph's handcrafted sensory projection with a documented
+1. Fit the exposed dynamics parameters against held-out functional targets and
+   report calibration error separately from chess performance.
+2. Align MaleCNS annotations with FlyWire cell types and morphology without
+   merging the male and female raw connectomes.
+3. Replace the generic graph's handcrafted sensory projection with a documented
    photoreceptor interface.
-3. Replace the generic output hash with a calibrated, experiment-specific
+4. Replace the generic output hash with a calibrated, experiment-specific
    neural readout while keeping legal-move masking outside the brain model.
-4. Add reward-conditioned experiments and frozen/shuffled controls before
+5. Add reward-conditioned experiments and frozen/shuffled controls before
    making any claim about learning or chess skill.
 
 ## Scientific boundary
