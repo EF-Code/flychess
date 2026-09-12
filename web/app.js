@@ -16,6 +16,7 @@
   const boundElement = document.getElementById("bound");
   const fenElement = document.getElementById("fen");
   const thoughtsElement = document.getElementById("thoughts");
+  const thoughtPhaseElement = document.getElementById("thought-phase");
   const thoughtCountElement = document.getElementById("thought-count");
   const movesElement = document.getElementById("moves");
   const form = document.getElementById("game-form");
@@ -209,6 +210,18 @@
     return (status || "ready").replace(/_/g, " ").toUpperCase();
   }
 
+  function formatPhase(phase) {
+    const labels = {
+      thinking: "FLY THINKING",
+      decision: "DECISION READY",
+      move: "MOVE COMMITTED",
+      complete: "COMPLETE",
+      error: "ERROR",
+      idle: "IDLE"
+    };
+    return labels[phase] || formatStatus(phase || "idle");
+  }
+
   function renderState(state) {
     if (!state || !state.fen) return;
     renderBoard(state);
@@ -219,6 +232,8 @@
     statusPill.textContent = formatStatus(state.status);
     statusPill.dataset.status = state.status || "ready";
     statusMessage.textContent = state.message || "";
+    thoughtPhaseElement.textContent = formatPhase(state.phase);
+    thoughtPhaseElement.dataset.phase = state.phase || "idle";
     const count = Number(state.move_count || 0);
     moveCount.textContent = String(count);
     moveCountLabel.textContent = String(count) + (count === 1 ? " ply" : " plies");
@@ -262,10 +277,33 @@
     return payload;
   }
 
+  async function fetchState() {
+    const response = await fetch("/api/state", { headers: { "Accept": "application/json" } });
+    return readJson(response);
+  }
+
+  function waitForNextState() {
+    return new Promise(function (resolve) { window.setTimeout(resolve, 140); });
+  }
+
+  async function followRunningGame() {
+    while (true) {
+      await waitForNextState();
+      const state = await fetchState();
+      renderState(state);
+      if (state.status !== "running") return state;
+    }
+  }
+
   async function loadState() {
     try {
-      const response = await fetch("/api/state", { headers: { "Accept": "application/json" } });
-      renderState(await readJson(response));
+      const state = await fetchState();
+      renderState(state);
+      if (state.status === "running") {
+        startButton.disabled = true;
+        startButton.querySelector("span:last-child").textContent = "Following live run…";
+        await followRunningGame();
+      }
     } catch (error) {
       showError(error.message);
     }
@@ -282,12 +320,14 @@
         depth: Number(depthInput.value),
         max_plies: Number(maxPliesInput.value)
       };
-      const response = await fetch("/api/game", {
+      const response = await fetch("/api/game/start", {
         method: "POST",
         headers: { "Accept": "application/json", "Content-Type": "application/json" },
         body: JSON.stringify(body)
       });
-      renderState(await readJson(response));
+      const state = await readJson(response);
+      renderState(state);
+      if (state.status === "running") await followRunningGame();
     } catch (error) {
       showError(error.message);
     } finally {

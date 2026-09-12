@@ -1,9 +1,11 @@
 """Local web interface for bounded fly-vs-Stockfish experiments.
 
-The HTTP layer deliberately stays small and dependency-free.  A browser can
-request the current state and ask the server to run one bounded game.  The
-engine executable is server configuration, never request data, and the only
-request options accepted are validated, bounded experiment settings.
+The HTTP layer deliberately stays small and dependency-free. A browser can
+request the current state, start one bounded game in the background, and poll
+for live policy telemetry. The legacy synchronous game endpoint remains
+available for callers that need one complete response. The engine executable
+is server configuration, never request data, and the only request options
+accepted are validated, bounded experiment settings.
 """
 
 from __future__ import annotations
@@ -26,7 +28,7 @@ from .brain import SurrogateFlyBrain
 from .connectome import load_connectome
 from .connectome_policy import ConnectomeFlyBrain
 from .engine import StockfishEngine
-from .game import DecisionRecord, GameResult, MoveRecord, play_game
+from .game import DecisionRecord, GameResult, MoveRecord, ProgressCallback, play_game
 
 
 DEFAULT_HOST = "127.0.0.1"
@@ -114,6 +116,7 @@ class GameOptions:
 
 
 GameCallback = Callable[[str, GameOptions], GameResult]
+GameRunner = Callable[[str, GameOptions, ProgressCallback | None], GameResult]
 
 
 def _bounded_int(value: Any, *, name: str, minimum: int, maximum: int) -> int:
@@ -213,6 +216,7 @@ def run_bounded_game(
     engine_path: str,
     options: GameOptions,
     connectome_path: str | None = None,
+    on_progress: ProgressCallback | None = None,
 ) -> GameResult:
     """Run one server-authorized game using the existing package APIs.
 
@@ -235,6 +239,7 @@ def run_bounded_game(
             stockfish,
             fly_color=fly_color,
             max_plies=options.max_plies,
+            on_progress=on_progress,
         )
 
 
@@ -271,6 +276,11 @@ def _base_state(options: GameOptions, *, status: str, message: str) -> dict[str,
     return {
         "ok": True,
         "status": status,
+        "phase": {
+            "running": "thinking",
+            "complete": "complete",
+            "error": "error",
+        }.get(status, "idle"),
         "message": message,
         "fen": chess.Board().fen(),
         "recent_moves": [],
@@ -328,6 +338,25 @@ def result_to_state(result: GameResult, options: GameOptions) -> dict[str, Any]:
     return state
 
 
+def progress_to_state(
+    result: GameResult,
+    options: GameOptions,
+    *,
+    phase: str,
+    message: str,
+) -> dict[str, Any]:
+    """Convert an in-flight game snapshot into the browser state shape."""
+
+    state = result_to_state(result, options)
+    state["status"] = "running"
+    state["phase"] = phase
+    state["message"] = message
+    state["outcome"] = None
+    state["outcome_detail"] = None
+    state["stopped_at_limit"] = False
+    return state
+
+
 class FlychessWebApp:
     """Thread-safe application state and server-side game callback boundary."""
 
@@ -359,6 +388,18 @@ class FlychessWebApp:
                 self.connectome_path,
             )
         )
+        if callback is None:
+            self._runner: GameRunner = lambda configured_engine_path, options, on_progress: run_bounded_game(
+                configured_engine_path,
+                options,
+                self.connectome_path,
+                on_progress=on_progress,
+            )
+        else:
+            self._runner = lambda configured_engine_path, options, _on_progress: callback(
+                configured_engine_path,
+                options,
+            )
         self._state_lock = threading.Lock()
         self._game_lock = threading.Lock()
         self._state = _base_state(
@@ -398,6 +439,54 @@ class FlychessWebApp:
             with self._state_lock:
                 self._state = result_to_state(result, options)
             return self.snapshot()
+        finally:
+            self._game_lock.release()
+
+    def start_game_async(self, payload: Any = None) -> dict[str, Any]:
+        """Start a game in the background and return its initial state."""
+
+        options = parse_game_options(payload, self.defaults)
+        if not self._game_lock.acquire(blocking=False):
+            raise BusyGameError("a game is already running")
+
+        with self._state_lock:
+            self._state = _base_state(
+                options,
+                status="running",
+                message="Fly is watching the board before its first decision…",
+            )
+        worker = threading.Thread(
+            target=self._run_game_worker,
+            args=(options,),
+            name="flychess-game",
+            daemon=True,
+        )
+        worker.start()
+        return self.snapshot()
+
+    def _run_game_worker(self, options: GameOptions) -> None:
+        def publish(result: GameResult, phase: str, message: str) -> None:
+            with self._state_lock:
+                self._state = progress_to_state(
+                    result,
+                    options,
+                    phase=phase,
+                    message=message,
+                )
+
+        try:
+            result = self._runner(self.engine_path, options, publish)
+        except Exception as exc:
+            message = f"Game could not be started: {type(exc).__name__}: {exc}"
+            with self._state_lock:
+                error_state = _base_state(options, status="error", message=message)
+                error_state["ok"] = False
+                self._state = error_state
+        else:
+            with self._state_lock:
+                final_state = result_to_state(result, options)
+                final_state["phase"] = "complete"
+                self._state = final_state
         finally:
             self._game_lock.release()
 
@@ -498,12 +587,18 @@ class FlychessRequestHandler(BaseHTTPRequestHandler):
         self._serve_asset(send_body=False)
 
     def do_POST(self) -> None:  # noqa: N802 - stdlib handler API
-        if self._path() != "/api/game":
+        path = self._path()
+        if path not in {"/api/game", "/api/game/start"}:
             self._send_error_json(HTTPStatus.NOT_FOUND, "not found")
             return
         try:
             payload = self._read_json()
-            state = self.app.start_game(payload)
+            if path == "/api/game/start":
+                state = self.app.start_game_async(payload)
+                response_status = HTTPStatus.ACCEPTED
+            else:
+                state = self.app.start_game(payload)
+                response_status = HTTPStatus.OK
         except WebRequestError as exc:
             self._send_error_json(exc.status, str(exc))
         except BusyGameError as exc:
@@ -514,7 +609,7 @@ class FlychessRequestHandler(BaseHTTPRequestHandler):
                 {"ok": False, "error": str(exc), "state": self.app.snapshot()},
             )
         else:
-            self._send_json(HTTPStatus.OK, state)
+            self._send_json(response_status, state)
 
     def log_message(self, format: str, *args: Any) -> None:
         # Keep the local console useful without dumping request bodies.

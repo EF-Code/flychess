@@ -46,10 +46,11 @@ Serve the browser UI locally:
 The server binds to `127.0.0.1` by default. Open the printed URL and use the
 bounded game form to run an experiment.
 
-After a run, the browser shows the latest fly decisions in the **Fly decision
-readout** panel: up to five legal candidates, their policy scores, the selected
-move, and compact activity metrics. This is observable policy telemetry, not a
-literal private chain-of-thought or evidence of biological cognition.
+The browser follows a run live through `POST /api/game/start` and repeated
+`GET /api/state` snapshots. The **Fly decision readout** panel surfaces up to
+five legal candidates, their policy scores, the selected move, and compact
+activity metrics as the game progresses. This is observable policy telemetry,
+not a literal private chain-of-thought or evidence of biological cognition.
 
 Record a replayable game:
 

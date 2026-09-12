@@ -36,3 +36,32 @@ def test_game_loop_rejects_invalid_bound() -> None:
 
     with pytest.raises(ValueError, match="max_plies"):
         play_game(NeverUsed(), None, max_plies=0)  # type: ignore[arg-type]
+
+
+def test_game_loop_publishes_live_progress_phases() -> None:
+    class FirstLegalMoveEngine:
+        def choose_move(self, board):
+            return next(iter(board.legal_moves))
+
+    events: list[tuple[str, str, int]] = []
+
+    result = play_game(
+        SurrogateFlyBrain(seed=3),
+        FirstLegalMoveEngine(),  # type: ignore[arg-type]
+        max_plies=2,
+        on_progress=lambda snapshot, phase, message: events.append(
+            (phase, message, len(snapshot.moves))
+        ),
+    )
+
+    assert len(result.moves) == 2
+    assert [phase for phase, _message, _plies in events] == [
+        "thinking",
+        "decision",
+        "move",
+        "thinking",
+        "move",
+    ]
+    decision_event = events[1]
+    assert "candidates" in decision_event[1]
+    assert decision_event[2] == 0

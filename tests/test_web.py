@@ -6,6 +6,7 @@ import http.client
 import json
 import shutil
 import threading
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
@@ -209,6 +210,41 @@ def test_second_game_is_rejected_while_callback_is_running() -> None:
         release.set()
         first_thread.join(timeout=2)
         assert first_result[0][0] == 200
+
+
+def test_async_game_start_returns_running_state_and_finishes_in_state_endpoint() -> None:
+    entered = threading.Event()
+    release = threading.Event()
+
+    def blocking_callback(_engine_path: str, options: GameOptions) -> GameResult:
+        entered.set()
+        assert release.wait(timeout=2)
+        return _fake_result(options)
+
+    with running_server(callback=blocking_callback) as (server, _calls):
+        status, state = request(server, "POST", "/api/game/start", {})
+        assert status == 202
+        assert state["status"] == "running"
+        assert state["phase"] == "thinking"
+        assert entered.wait(timeout=2)
+
+        status, state = request(server, "GET", "/api/state")
+        assert status == 200
+        assert state["status"] == "running"
+
+        release.set()
+        final_state: dict[str, Any] | None = None
+        for _ in range(50):
+            status, candidate = request(server, "GET", "/api/state")
+            assert status == 200
+            if candidate["status"] != "running":
+                final_state = candidate
+                break
+            time.sleep(0.02)
+
+        assert final_state is not None
+        assert final_state["status"] == "complete"
+        assert final_state["phase"] == "complete"
 
 
 @pytest.mark.skipif(shutil.which("stockfish") is None, reason="Stockfish is not installed")

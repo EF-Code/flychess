@@ -143,6 +143,13 @@ input:focus, select:focus { border-color: var(--accent-strong); box-shadow: 0 0 
 .empty-state { color: var(--faint); font-family: inherit; font-size: 0.73rem; }
 .thought-disclaimer { margin-bottom: 13px; font-size: 0.72rem; }
 .thought-list { display: grid; gap: 10px; max-height: 480px; overflow: auto; margin-top: 13px; padding-right: 3px; }
+.thought-meta { display: grid; justify-items: end; gap: 5px; }
+.thought-phase { color: var(--faint); font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.58rem; font-weight: 800; letter-spacing: 0.08em; }
+.thought-phase[data-phase="thinking"] { color: var(--warm); animation: pulse-phase 1.1s ease-in-out infinite alternate; }
+.thought-phase[data-phase="decision"] { color: var(--accent); }
+.thought-phase[data-phase="move"], .thought-phase[data-phase="complete"] { color: var(--accent-strong); }
+.thought-phase[data-phase="error"] { color: var(--danger); }
+@keyframes pulse-phase { from { opacity: 0.5; } to { opacity: 1; } }
 .thought-block { padding: 11px; border: 1px solid rgba(201, 245, 106, 0.11); border-radius: 10px; background: rgba(201, 245, 106, 0.035); }
 .thought-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--faint); font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.62rem; letter-spacing: 0.06em; }
 .thought-heading strong { color: var(--accent); font-size: 0.7rem; letter-spacing: 0; }
@@ -185,4 +192,8 @@ input:focus, select:focus { border-color: var(--accent-strong); box-shadow: 0 0 
   .panel-heading { margin-bottom: 15px; }
   .turn-label { margin-top: 17px; }
   .footer { display: grid; gap: 6px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thought-phase[data-phase="thinking"] { animation: none; }
 }

@@ -5,7 +5,7 @@ from .connectome import Connectome
 from .connectome_policy import ConnectomeFlyBrain, ConnectomePolicyError
 from .engine import StockfishEngine
 from .experiment import ReplayedExperiment, read_experiment, write_experiment
-from .game import DecisionRecord, GameResult, MoveRecord, play_game
+from .game import DecisionRecord, GameResult, MoveRecord, ProgressCallback, play_game
 
 __all__ = [
     "Connectome",
@@ -16,6 +16,7 @@ __all__ = [
     "GameResult",
     "MoveCandidate",
     "MoveRecord",
+    "ProgressCallback",
     "ReplayedExperiment",
     "StockfishEngine",
     "SurrogateFlyBrain",
