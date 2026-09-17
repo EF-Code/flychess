@@ -16,6 +16,7 @@ The repository contains a runnable local experiment:
 - a bounded fly decision readout showing the top legal candidates and policy activity;
 - a provenance-locked MaleCNS calibration importer for filtered subgraphs;
 - a sparse sign-aware LIF dynamics backend for imported calibration subgraphs;
+- a compatible optional runtime for the public ChessFly/FlyWire artifact;
 - tests covering graph validation, replay tampering, HTTP boundaries, and engine integration.
 
 The surrogate is deliberately not presented as a biological fly brain. A
@@ -67,6 +68,39 @@ Run the graph backend with a connectome edge-list JSON file:
 /home/hiro/.venv/bin/flychess --connectome examples/tiny-connectome.json \
   --neural-steps 2 --depth 2 --max-plies 24
 ```
+
+## Run the public ChessFly artifact
+
+The optional ChessFly runtime can load the graph and weights used by the
+public demo. The graph is downloaded from the demo Space, while the learned
+weights are downloaded from the model repository; neither is vendored in this
+repository. Install the isolated runtime explicitly:
+
+```bash
+/home/hiro/.venv/bin/python -m pip install -e '.[chessfly]'
+```
+
+Then construct a policy after acquiring and checksum-recording
+`connectome.bin.gz`, `neurons.bin.gz`, and `flynet.safetensors`:
+
+```python
+from flychess.chessfly import ChessFlyModel, ChessFlyPolicy
+
+model = ChessFlyModel.from_artifacts(
+    "data/chessfly/connectome.bin.gz",
+    "data/chessfly/neurons.bin.gz",
+    "data/chessfly/flynet.safetensors",
+)
+fly = ChessFlyPolicy(model)
+move = fly.select_move(board)
+print(move, fly.win_probability, fly.last_readout)
+```
+
+The adapter matches the public worker's 780-feature encoding, black-turn
+mirroring, 1,968-action space, target-row CSR propagation, five calibrated
+steps, decoder heads, and post-readout legal mask. It is a compatibility layer
+for a FlyWire-derived model, not biological MaleCNS calibration. Keep the
+model's graph license and source citations with any acquired artifacts.
 
 Useful options:
 

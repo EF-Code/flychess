@@ -32,6 +32,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="Use a validated connectome JSON edge list instead of the surrogate policy",
     )
     parser.add_argument(
+        "--chessfly-connectome",
+        type=Path,
+        default=None,
+        help="Public ChessFly connectome.bin.gz artifact",
+    )
+    parser.add_argument(
+        "--chessfly-neurons",
+        type=Path,
+        default=None,
+        help="Public ChessFly neurons.bin.gz artifact",
+    )
+    parser.add_argument(
+        "--chessfly-weights",
+        type=Path,
+        default=None,
+        help="Public ChessFly flynet.safetensors artifact",
+    )
+    parser.add_argument(
+        "--chessfly-device",
+        default="cpu",
+        help="PyTorch device for the optional ChessFly policy (default: cpu)",
+    )
+    parser.add_argument(
         "--neural-steps",
         type=int,
         default=2,
@@ -55,7 +78,24 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("--result requires --record")
     board = chess.Board(args.fen) if args.fen else chess.Board()
     fly_color = chess.WHITE if args.fly_color == "white" else chess.BLACK
-    if args.connectome is None:
+    chessfly_paths = (args.chessfly_connectome, args.chessfly_neurons, args.chessfly_weights)
+    if args.connectome is not None and any(path is not None for path in chessfly_paths):
+        raise SystemExit("--connectome and --chessfly-* policies are mutually exclusive")
+    if any(path is not None for path in chessfly_paths) and not all(path is not None for path in chessfly_paths):
+        raise SystemExit("--chessfly-connectome, --chessfly-neurons, and --chessfly-weights are required together")
+    if all(path is not None for path in chessfly_paths):
+        from .chessfly import ChessFlyModel, ChessFlyPolicy
+
+        fly = ChessFlyPolicy(
+            ChessFlyModel.from_artifacts(
+                args.chessfly_connectome,
+                args.chessfly_neurons,
+                args.chessfly_weights,
+                device=args.chessfly_device,
+            )
+        )
+        policy_name = "chessfly"
+    elif args.connectome is None:
         fly = SurrogateFlyBrain(seed=args.seed)
         policy_name = "surrogate"
     else:
@@ -82,6 +122,15 @@ def main(argv: list[str] | None = None) -> int:
         }
         if args.connectome is not None:
             engine_settings["connectome"] = str(args.connectome)
+        if all(path is not None for path in chessfly_paths):
+            engine_settings.update(
+                {
+                    "chessfly_connectome": str(args.chessfly_connectome),
+                    "chessfly_neurons": str(args.chessfly_neurons),
+                    "chessfly_weights": str(args.chessfly_weights),
+                    "chessfly_device": args.chessfly_device,
+                }
+            )
 
     if args.record is not None:
         write_experiment(
