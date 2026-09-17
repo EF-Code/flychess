@@ -50,6 +50,18 @@ MODEL_FILES = {
     "results/release.json",
 }
 
+GENERIC_RUNTIME_HOMES = frozenset({"/content", "/root", "/tmp", "/workspace"})
+ABSOLUTE_USER_HOME = re.compile(r"(?<![A-Za-z0-9._-])/(?:home|Users)/[^/\s'\"`]+")
+
+
+def private_home_prefix(home: Path | None = None) -> str | None:
+    """Return an identity-bearing home prefix, excluding hosted-runtime roots."""
+
+    prefix = (home or Path.home()).resolve().as_posix().rstrip("/")
+    if prefix in {"", "/", "/home", "/Users"} or prefix in GENERIC_RUNTIME_HOMES:
+        return None
+    return prefix
+
 
 def read_secret(name: str) -> str | None:
     """Read a runtime secret without printing or persisting it."""
@@ -274,13 +286,13 @@ def main() -> int:
     run(["git", "fetch", "origin", "master"], cwd=source_dir, env=git_env(github_token))
     source_sha = run(["git", "rev-parse", "FETCH_HEAD"], cwd=source_dir)
     run(["git", "checkout", "--detach", "FETCH_HEAD"], cwd=source_dir)
-    home_prefix = Path.home().as_posix().rstrip("/")
+    home_prefix = private_home_prefix()
     tracked_files = run(["git", "ls-files"], cwd=source_dir).splitlines()
     for relative in tracked_files:
         candidate = source_dir / relative
         if candidate.is_file():
             contents = candidate.read_text(encoding="utf-8", errors="ignore")
-            if home_prefix and home_prefix in contents:
+            if (home_prefix and home_prefix in contents) or ABSOLUTE_USER_HOME.search(contents):
                 raise RuntimeError("source checkout still contains a private home-path reference")
 
     card = (source_dir / "docs/huggingface-model-card.md").read_text(encoding="utf-8")
