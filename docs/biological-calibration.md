@@ -49,5 +49,5 @@ manifest metadata.
 Install the optional reader explicitly when the artifacts are available:
 
 ```bash
-/home/hiro/.venv/bin/python -m pip install -e '.[dev,calibration]'
+~/.venv/bin/python -m pip install -e '.[dev,calibration]'
 ```

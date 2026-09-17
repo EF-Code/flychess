@@ -30,20 +30,20 @@ replace the surrogate without changing the game or engine layers.
 Use the shared Python environment required by this workspace:
 
 ```bash
-/home/hiro/.venv/bin/python -m pip install -e '.[dev]'
-/home/hiro/.venv/bin/flychess --depth 3 --max-plies 40
+~/.venv/bin/python -m pip install -e '.[dev]'
+~/.venv/bin/flychess --depth 3 --max-plies 40
 ```
 
 If the console script is not on the environment path, use:
 
 ```bash
-/home/hiro/.venv/bin/python -m flychess.cli --depth 3 --max-plies 40
+~/.venv/bin/python -m flychess.cli --depth 3 --max-plies 40
 ```
 
 Serve the browser UI locally:
 
 ```bash
-/home/hiro/.venv/bin/python -m flychess.web
+~/.venv/bin/python -m flychess.web
 ```
 
 The server binds to `127.0.0.1` by default. Open the printed URL and use the
@@ -58,14 +58,14 @@ not a literal private chain-of-thought or evidence of biological cognition.
 Record a replayable game:
 
 ```bash
-/home/hiro/.venv/bin/flychess --depth 3 --max-plies 40 \
+~/.venv/bin/flychess --depth 3 --max-plies 40 \
   --record runs/game.jsonl --result runs/result.json
 ```
 
 Run the graph backend with a connectome edge-list JSON file:
 
 ```bash
-/home/hiro/.venv/bin/flychess --connectome examples/tiny-connectome.json \
+~/.venv/bin/flychess --connectome examples/tiny-connectome.json \
   --neural-steps 2 --depth 2 --max-plies 24
 ```
 
@@ -77,7 +77,7 @@ weights are downloaded from the model repository; neither is vendored in this
 repository. Install the isolated runtime explicitly:
 
 ```bash
-/home/hiro/.venv/bin/python -m pip install -e '.[chessfly]'
+~/.venv/bin/python -m pip install -e '.[chessfly]'
 ```
 
 Then construct a policy after acquiring and checksum-recording
