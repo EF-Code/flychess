@@ -88,7 +88,8 @@ Install the runtime and Hub client in an isolated environment:
 
 ```bash
 python -m pip install 'huggingface_hub' 'safetensors' 'torch' 'numpy' 'python-chess'
-python -m pip install 'flychess[flynet]'
+git clone https://github.com/EF-Code/flychess.git /content/flychess
+python -m pip install -e '/content/flychess[flynet]'
 ```
 
 Download the model-only artifacts and run one legal decision:

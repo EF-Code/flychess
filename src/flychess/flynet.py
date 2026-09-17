@@ -461,7 +461,7 @@ class FlyNetModel:
         torch, _nn = _require_torch()
         if not isinstance(features, torch.Tensor):
             features = torch.as_tensor(features, dtype=torch.float32, device=self.device)
-        return self.module(features.to(self.device), include_activity=include_activity)
+        return self.module(features.to(device=self.device, dtype=torch.float32), include_activity=include_activity)
 
     def state_dict(self) -> Any:
         return self.module.state_dict()
