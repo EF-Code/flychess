@@ -102,6 +102,27 @@ steps, decoder heads, and post-readout legal mask. It is a compatibility layer
 for a FlyWire-derived model, not biological MaleCNS calibration. Keep the
 model's graph license and source citations with any acquired artifacts.
 
+## Publish the model artifact from Colab
+
+The GitHub source distribution and the Hugging Face model distribution are
+separate by design. The model repository contains the SafeTensors weights,
+model card, architecture metadata, and a release receipt; it does not mirror
+the Python source tree. From a Colab checkout with `HF_TOKEN` and
+`GITHUB_ACCESS_TOKEN` stored as runtime secrets, run:
+
+```bash
+python scripts/publish_hf_model.py \
+  --weights /content/chessfly-flynet.safetensors \
+  --source-dir /content/flychess \
+  --prune-source-mirror
+```
+
+The publisher validates the tensor keys and shapes, checks the source path
+hygiene, runs the test suite, records a SHA-256 receipt, uploads the model,
+removes only the audited source-mirror paths, and downloads the published
+weights again to verify the remote checksum. It never prints credentials or
+the Hub account name.
+
 Useful options:
 
 ```text
