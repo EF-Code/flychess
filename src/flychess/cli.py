@@ -18,7 +18,7 @@ from .game import play_game
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="flychess",
-        description="Play a bounded chess game between the fly-brain baseline and Stockfish.",
+        description="Play a bounded chess game between a Flychess policy and Stockfish.",
     )
     parser.add_argument("--engine", default="stockfish", help="Stockfish executable path")
     parser.add_argument("--depth", type=int, default=4, help="Stockfish search depth")
@@ -55,6 +55,35 @@ def build_parser() -> argparse.ArgumentParser:
         help="PyTorch device for the optional ChessFly policy (default: cpu)",
     )
     parser.add_argument(
+        "--flynet-weights",
+        type=Path,
+        default=None,
+        help="Flychess-trained FlyNet SafeTensors weights",
+    )
+    parser.add_argument(
+        "--flynet-graph",
+        type=Path,
+        default=None,
+        help="Flychess-trained FlyNet sparse graph (.npz)",
+    )
+    parser.add_argument(
+        "--flynet-graph-metadata",
+        type=Path,
+        default=None,
+        help="Optional FlyNet graph metadata JSON",
+    )
+    parser.add_argument(
+        "--flynet-config",
+        type=Path,
+        default=None,
+        help="Optional FlyNet model config JSON",
+    )
+    parser.add_argument(
+        "--flynet-device",
+        default="cpu",
+        help="PyTorch device for the FlyNet policy (default: cpu)",
+    )
+    parser.add_argument(
         "--neural-steps",
         type=int,
         default=2,
@@ -79,11 +108,39 @@ def main(argv: list[str] | None = None) -> int:
     board = chess.Board(args.fen) if args.fen else chess.Board()
     fly_color = chess.WHITE if args.fly_color == "white" else chess.BLACK
     chessfly_paths = (args.chessfly_connectome, args.chessfly_neurons, args.chessfly_weights)
-    if args.connectome is not None and any(path is not None for path in chessfly_paths):
-        raise SystemExit("--connectome and --chessfly-* policies are mutually exclusive")
+    flynet_paths = (args.flynet_weights, args.flynet_graph)
+    configured_policies = sum(
+        (
+            args.connectome is not None,
+            any(path is not None for path in chessfly_paths),
+            any(path is not None for path in flynet_paths),
+        )
+    )
+    if configured_policies > 1:
+        raise SystemExit("--connectome, --chessfly-*, and --flynet-* policies are mutually exclusive")
     if any(path is not None for path in chessfly_paths) and not all(path is not None for path in chessfly_paths):
         raise SystemExit("--chessfly-connectome, --chessfly-neurons, and --chessfly-weights are required together")
-    if all(path is not None for path in chessfly_paths):
+    if any(path is not None for path in flynet_paths) and not all(path is not None for path in flynet_paths):
+        raise SystemExit("--flynet-weights and --flynet-graph are required together")
+    if args.flynet_graph_metadata is not None and not all(path is not None for path in flynet_paths):
+        raise SystemExit("--flynet-graph-metadata requires --flynet-weights and --flynet-graph")
+    if args.flynet_config is not None and not all(path is not None for path in flynet_paths):
+        raise SystemExit("--flynet-config requires --flynet-weights and --flynet-graph")
+    if all(path is not None for path in flynet_paths):
+        from .flynet import FlyNetPolicy
+        from .flynet_training import load_flynet_model
+
+        fly = FlyNetPolicy(
+            load_flynet_model(
+                args.flynet_weights,
+                args.flynet_graph,
+                graph_metadata_path=args.flynet_graph_metadata,
+                config_path=args.flynet_config,
+                device=args.flynet_device,
+            )
+        )
+        policy_name = "flynet"
+    elif all(path is not None for path in chessfly_paths):
         from .chessfly import ChessFlyModel, ChessFlyPolicy
 
         fly = ChessFlyPolicy(
@@ -129,6 +186,18 @@ def main(argv: list[str] | None = None) -> int:
                     "chessfly_neurons": str(args.chessfly_neurons),
                     "chessfly_weights": str(args.chessfly_weights),
                     "chessfly_device": args.chessfly_device,
+                }
+            )
+        if all(path is not None for path in flynet_paths):
+            engine_settings.update(
+                {
+                    "flynet_weights": str(args.flynet_weights),
+                    "flynet_graph": str(args.flynet_graph),
+                    "flynet_graph_metadata": str(args.flynet_graph_metadata)
+                    if args.flynet_graph_metadata is not None
+                    else None,
+                    "flynet_config": str(args.flynet_config) if args.flynet_config is not None else None,
+                    "flynet_device": args.flynet_device,
                 }
             )
 

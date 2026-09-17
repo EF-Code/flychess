@@ -29,6 +29,8 @@ from .chessfly import ChessFlyModel, ChessFlyPolicy
 from .connectome import load_connectome
 from .connectome_policy import ConnectomeFlyBrain
 from .engine import StockfishEngine
+from .flynet import FlyNetModel, FlyNetPolicy
+from .flynet_training import load_flynet_model
 from .game import DecisionRecord, GameResult, MoveRecord, ProgressCallback, play_game
 
 
@@ -159,8 +161,8 @@ def validate_options(
     if not isinstance(fly_color, str) or fly_color not in {"white", "black"}:
         raise WebRequestError("fly_color must be 'white' or 'black'")
     validated_seed = _bounded_int(seed, name="seed", minimum=MIN_SEED, maximum=MAX_SEED)
-    if policy not in {"surrogate", "connectome", "chessfly"}:
-        raise ValueError("policy must be 'surrogate' or 'connectome'")
+    if policy not in {"surrogate", "connectome", "chessfly", "flynet"}:
+        raise ValueError("policy must be 'surrogate', 'connectome', 'chessfly', or 'flynet'")
     validated_neural_steps = _bounded_int(neural_steps, name="neural_steps", minimum=1, maximum=100)
     return GameOptions(
         validated_depth,
@@ -234,6 +236,36 @@ def _validate_chessfly_paths(
     return tuple(resolved)  # type: ignore[return-value]
 
 
+def _validate_flynet_paths(
+    weights_path: str | Path | None,
+    graph_path: str | Path | None,
+    graph_metadata_path: str | Path | None,
+    config_path: str | Path | None,
+) -> tuple[str, str, str | None, str | None] | None:
+    values = (weights_path, graph_path)
+    if all(value is None for value in values):
+        if graph_metadata_path is not None or config_path is not None:
+            raise ValueError("FlyNet metadata/config paths require weights and graph paths")
+        return None
+    if any(value is None for value in values):
+        raise ValueError("FlyNet weights and graph paths are required together")
+    resolved: list[str | None] = []
+    for label, value in zip(("weights", "graph"), values):
+        candidate = Path(value).expanduser().resolve()
+        if not candidate.is_file():
+            raise ValueError(f"FlyNet {label} file does not exist: {candidate}")
+        resolved.append(str(candidate))
+    for label, value in (("graph metadata", graph_metadata_path), ("config", config_path)):
+        if value is None:
+            resolved.append(None)
+            continue
+        candidate = Path(value).expanduser().resolve()
+        if not candidate.is_file():
+            raise ValueError(f"FlyNet {label} file does not exist: {candidate}")
+        resolved.append(str(candidate))
+    return tuple(resolved)  # type: ignore[return-value]
+
+
 def run_bounded_game(
     engine_path: str,
     options: GameOptions,
@@ -241,13 +273,19 @@ def run_bounded_game(
     on_progress: ProgressCallback | None = None,
     *,
     chessfly_model: ChessFlyModel | None = None,
+    flynet_model: FlyNetModel | None = None,
 ) -> GameResult:
     """Run one server-authorized game using a fixed server configuration."""
 
-    if connectome_path is not None and chessfly_model is not None:
-        raise ValueError("connectome and ChessFly policies are mutually exclusive")
+    configured_models = sum(model is not None for model in (chessfly_model, flynet_model))
+    if connectome_path is not None and configured_models:
+        raise ValueError("connectome and neural model policies are mutually exclusive")
+    if configured_models > 1:
+        raise ValueError("ChessFly and FlyNet policies are mutually exclusive")
     fly_color = chess.WHITE if options.fly_color == "white" else chess.BLACK
-    if chessfly_model is not None:
+    if flynet_model is not None:
+        fly = FlyNetPolicy(flynet_model)
+    elif chessfly_model is not None:
         fly = ChessFlyPolicy(chessfly_model)
     elif connectome_path is None:
         fly = SurrogateFlyBrain(seed=options.seed)
@@ -296,7 +334,12 @@ def _decision_payload(record: DecisionRecord) -> dict[str, Any]:
 
 def _base_state(options: GameOptions, *, status: str, message: str) -> dict[str, Any]:
     is_surrogate = options.policy == "surrogate"
-    policy_names = {"surrogate": "SurrogateFlyBrain", "connectome": "ConnectomeFlyBrain", "chessfly": "ChessFlyPolicy"}
+    policy_names = {
+        "surrogate": "SurrogateFlyBrain",
+        "connectome": "ConnectomeFlyBrain",
+        "chessfly": "ChessFlyPolicy",
+        "flynet": "FlyNetPolicy",
+    }
     return {
         "ok": True,
         "status": status,
@@ -317,6 +360,7 @@ def _base_state(options: GameOptions, *, status: str, message: str) -> dict[str,
             "policy": policy_names[options.policy],
             "is_surrogate": is_surrogate,
             "is_chessfly": options.policy == "chessfly",
+            "is_flynet": options.policy == "flynet",
             "color": options.fly_color,
             "seed": options.seed,
             "neural_steps": options.neural_steps,
@@ -399,13 +443,27 @@ class FlychessWebApp:
         chessfly_weights_path: str | Path | None = None,
         chessfly_device: str = "cpu",
         chessfly_cpu_threads: int | None = None,
+        flynet_weights_path: str | Path | None = None,
+        flynet_graph_path: str | Path | None = None,
+        flynet_graph_metadata_path: str | Path | None = None,
+        flynet_config_path: str | Path | None = None,
+        flynet_device: str = "cpu",
         callback: GameCallback | None = None,
     ) -> None:
         self.engine_path = _validate_engine_path(engine_path)
         self.connectome_path = _validate_connectome_path(connectome_path)
         self.chessfly_paths = _validate_chessfly_paths(chessfly_connectome_path, chessfly_neurons_path, chessfly_weights_path)
-        if self.connectome_path is not None and self.chessfly_paths is not None:
-            raise ValueError("connectome and ChessFly policies are mutually exclusive")
+        self.flynet_paths = _validate_flynet_paths(
+            flynet_weights_path,
+            flynet_graph_path,
+            flynet_graph_metadata_path,
+            flynet_config_path,
+        )
+        configured_policies = sum(
+            value is not None for value in (self.connectome_path, self.chessfly_paths, self.flynet_paths)
+        )
+        if configured_policies > 1:
+            raise ValueError("connectome, ChessFly, and FlyNet policies are mutually exclusive")
         self.chessfly_device = chessfly_device
         if self.chessfly_paths is None:
             self.chessfly_model = None
@@ -418,7 +476,29 @@ class FlychessWebApp:
                 )
             except Exception as exc:
                 raise ValueError(f"ChessFly artifacts are invalid: {exc}") from exc
-        policy = "chessfly" if self.chessfly_model is not None else ("connectome" if self.connectome_path is not None else "surrogate")
+        self.flynet_device = flynet_device
+        if self.flynet_paths is None:
+            self.flynet_model = None
+        else:
+            try:
+                self.flynet_model = load_flynet_model(
+                    self.flynet_paths[0],
+                    self.flynet_paths[1],
+                    graph_metadata_path=self.flynet_paths[2],
+                    config_path=self.flynet_paths[3],
+                    device=flynet_device,
+                )
+            except Exception as exc:
+                raise ValueError(f"FlyNet artifacts are invalid: {exc}") from exc
+        policy = (
+            "flynet"
+            if self.flynet_model is not None
+            else "chessfly"
+            if self.chessfly_model is not None
+            else "connectome"
+            if self.connectome_path is not None
+            else "surrogate"
+        )
         self.defaults = validate_options(
             depth=depth,
             max_plies=max_plies,
@@ -432,6 +512,7 @@ class FlychessWebApp:
                 options,
                 self.connectome_path,
                 chessfly_model=self.chessfly_model,
+                flynet_model=self.flynet_model,
             )
         )
         if callback is None:
@@ -441,6 +522,7 @@ class FlychessWebApp:
                 self.connectome_path,
                 on_progress=on_progress,
                 chessfly_model=self.chessfly_model,
+                flynet_model=self.flynet_model,
             )
         else:
             self._runner = lambda configured_engine_path, options, _on_progress: callback(
@@ -689,6 +771,11 @@ def create_server(
     chessfly_weights_path: str | Path | None = None,
     chessfly_device: str = "cpu",
     chessfly_cpu_threads: int | None = None,
+    flynet_weights_path: str | Path | None = None,
+    flynet_graph_path: str | Path | None = None,
+    flynet_graph_metadata_path: str | Path | None = None,
+    flynet_config_path: str | Path | None = None,
+    flynet_device: str = "cpu",
     callback: GameCallback | None = None,
 ) -> FlychessHTTPServer:
     """Create a server; by default it binds only to IPv4 loopback."""
@@ -707,6 +794,11 @@ def create_server(
         chessfly_weights_path=chessfly_weights_path,
         chessfly_device=chessfly_device,
         chessfly_cpu_threads=chessfly_cpu_threads,
+        flynet_weights_path=flynet_weights_path,
+        flynet_graph_path=flynet_graph_path,
+        flynet_graph_metadata_path=flynet_graph_metadata_path,
+        flynet_config_path=flynet_config_path,
+        flynet_device=flynet_device,
         callback=callback,
     )
     return FlychessHTTPServer((host, port), app)
@@ -729,6 +821,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--chessfly-weights", type=Path, default=None, help="Public ChessFly flynet.safetensors artifact")
     parser.add_argument("--chessfly-device", default="cpu", help="PyTorch device for ChessFly (default: cpu)")
     parser.add_argument("--chessfly-cpu-threads", type=int, default=None, help="Optional PyTorch CPU thread count")
+    parser.add_argument("--flynet-weights", type=Path, default=None, help="Flychess-trained FlyNet SafeTensors weights")
+    parser.add_argument("--flynet-graph", type=Path, default=None, help="Flychess-trained FlyNet sparse graph")
+    parser.add_argument("--flynet-graph-metadata", type=Path, default=None, help="Optional FlyNet graph metadata JSON")
+    parser.add_argument("--flynet-config", type=Path, default=None, help="Optional FlyNet model config JSON")
+    parser.add_argument("--flynet-device", default="cpu", help="PyTorch device for FlyNet (default: cpu)")
     parser.add_argument("--neural-steps", type=int, default=2, help="Connectome steps per fly turn")
     return parser
 
@@ -749,6 +846,11 @@ def main(argv: list[str] | None = None) -> int:
         chessfly_weights_path=args.chessfly_weights,
         chessfly_device=args.chessfly_device,
         chessfly_cpu_threads=args.chessfly_cpu_threads,
+        flynet_weights_path=args.flynet_weights,
+        flynet_graph_path=args.flynet_graph,
+        flynet_graph_metadata_path=args.flynet_graph_metadata,
+        flynet_config_path=args.flynet_config,
+        flynet_device=args.flynet_device,
     )
     host, port = server.server_address[:2]
     print(f"flychess web UI: http://{host}:{port}")

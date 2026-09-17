@@ -118,7 +118,7 @@ def test_server_defaults_to_loopback_and_serves_allowlisted_assets() -> None:
         status, html = request(server, "GET", "/")
         assert status == 200
         assert isinstance(html, str)
-        assert "Connectome Gambit" in html
+        assert "FlyNet Lab" in html
         assert "Surrogate" in html
 
         status, payload = request(server, "GET", "/api/state")

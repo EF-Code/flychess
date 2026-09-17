@@ -1,4 +1,10 @@
-# ChessFly artifact runtime
+# Legacy comparison artifact runtime
+
+> This document describes a legacy compatibility path used only for controlled
+> comparison. It is not FlyNet provenance, it is not used by the from-scratch
+> training pipeline, and its weights must never be presented as Flychess-trained
+> weights. The primary Flychess model release is documented in
+> `docs/huggingface-model-card.md`.
 
 Flychess now has an optional compatibility runtime for the public
 [ChessFly model](https://huggingface.co/mlabonne/chessfly) and its companion

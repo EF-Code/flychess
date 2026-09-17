@@ -1,159 +1,191 @@
 # flychess
 
-`flychess` is an experiment in connecting a fruit-fly brain model to chess,
-with [Stockfish](https://stockfishchess.org/) as the opponent.
+Flychess is a reproducible experiment in training a fly-inspired sparse neural
+policy to play chess against [Stockfish](https://stockfishchess.org/).
 
 ## Current status
 
-The repository contains a runnable local experiment:
+The source repository now contains an independent FlyNet track:
 
-- a stable sensory contract for an 8x8 board;
-- a deterministic recurrent `SurrogateFlyBrain` policy;
-- a validated JSON edge-list `Connectome` backend and chess adapter;
-- legal-move validation through `python-chess`;
-- a real Stockfish UCI opponent;
-- a bounded command-line game loop, replay recorder, and local browser UI;
-- a bounded fly decision readout showing the top legal candidates and policy activity;
-- a provenance-locked MaleCNS calibration importer for filtered subgraphs;
-- a sparse sign-aware LIF dynamics backend for imported calibration subgraphs;
-- a compatible optional runtime for the public ChessFly/FlyWire artifact;
-- tests covering graph validation, replay tampering, HTTP boundaries, and engine integration.
+- a seeded sparse signed graph generator with explicit optic, association,
+  memory, action, and value regions;
+- an 851-feature board encoder and deterministic 4,544-action UCI vocabulary;
+- a trainable recurrent graph model with inspectable activity readouts;
+- a legal-position sampler with side-to-move Stockfish teacher labels;
+- reproducible training, validation, SafeTensors export, graph serialization,
+  checksums, and release manifests;
+- CLI and local web support for loading a trained FlyNet release;
+- a Colab-oriented workflow for generating data, training, evaluating, and
+  publishing a model-only artifact;
+- tests covering graph/dataset contracts, checksum validation, game plumbing,
+  replay integrity, and HTTP boundaries.
 
-The surrogate is deliberately not presented as a biological fly brain. A
-connectome gives us a wiring diagram, but calibrated neural dynamics,
-chemical signaling, sensory transduction, and motor semantics still need to
-be supplied. The policy interface is designed so a MaleCNS/FlyWire backend can
-replace the surrogate without changing the game or engine layers.
+The independent weights are not committed to GitHub. They are generated in
+Colab from random initialization and released only with their graph, config,
+training history, dataset receipt, and SHA-256 manifest. Until that Colab run
+has completed, the repository is a tested training pipeline—not evidence of a
+trained playing-strength result.
 
-## Run it
+FlyNet's graph is an engineering abstraction, not a biological connectome
+reconstruction. MaleCNS/FlyWire calibration remains a separate provenance-
+locked research track. The legacy artifact adapter is retained only as a
+clearly isolated comparison path in [the comparison runtime note](docs/chessfly-runtime.md).
+
+## Run the source checks
 
 Use the shared Python environment required by this workspace:
 
 ```bash
 ~/.venv/bin/python -m pip install -e '.[dev]'
+~/.venv/bin/python -m pytest -q
+```
+
+Run the existing dependency-light baseline locally:
+
+```bash
 ~/.venv/bin/flychess --depth 3 --max-plies 40
 ```
 
-If the console script is not on the environment path, use:
-
-```bash
-~/.venv/bin/python -m flychess.cli --depth 3 --max-plies 40
-```
-
-Serve the browser UI locally:
+Serve the browser UI:
 
 ```bash
 ~/.venv/bin/python -m flychess.web
 ```
 
-The server binds to `127.0.0.1` by default. Open the printed URL and use the
-bounded game form to run an experiment.
-
-The browser follows a run live through `POST /api/game/start` and repeated
-`GET /api/state` snapshots. The **Fly decision readout** panel surfaces up to
-five legal candidates, their policy scores, the selected move, and compact
-activity metrics as the game progresses. This is observable policy telemetry,
+The server binds to `127.0.0.1` by default. The browser follows a bounded run
+through the live state endpoint. The Fly decision panel shows surfaced legal
+candidates and compact activity metrics; this is observable policy telemetry,
 not a literal private chain-of-thought or evidence of biological cognition.
 
-Record a replayable game:
+## Train FlyNet in Colab
+
+The checked-in notebook [notebooks/flynet_colab.ipynb](notebooks/flynet_colab.ipynb)
+contains the complete hosted-runtime sequence. The equivalent cells are:
+
+```bash
+%cd /content
+!git clone https://github.com/EF-Code/flychess.git
+%cd /content/flychess
+!python -m pip install -q -e '.[flynet,dev]'
+!sudo apt-get update -qq
+!sudo apt-get install -y -qq stockfish
+```
+
+Generate an auditable teacher dataset. This uses Stockfish for labels only;
+it does not load an existing neural model:
+
+```bash
+!python scripts/generate_flynet_dataset.py \
+  --engine stockfish \
+  --depth 3 \
+  --samples 20000 \
+  --seed 20260917 \
+  --output /content/flynet-dataset.npz
+```
+
+Train from a seeded random initialization and write the complete release
+bundle:
+
+```bash
+!python scripts/train_flynet.py \
+  --dataset /content/flynet-dataset.npz \
+  --output-dir /content/flynet-release \
+  --seed 20260917 \
+  --graph-seed 20260918 \
+  --nodes 4096 \
+  --edges 200000 \
+  --epochs 20 \
+  --batch-size 256 \
+  --device cuda
+```
+
+Evaluate the held-out teacher agreement and legal-move boundary:
+
+```bash
+!python scripts/evaluate_flynet.py \
+  --dataset /content/flynet-dataset.npz \
+  --weights /content/flynet-release/flynet.safetensors \
+  --graph /content/flynet-release/flynet-graph.npz \
+  --graph-metadata /content/flynet-release/flynet-graph.json \
+  --config /content/flynet-release/flynet-config.json
+```
+
+Play the trained model locally:
+
+```bash
+!python -m flychess.cli \
+  --flynet-weights /content/flynet-release/flynet.safetensors \
+  --flynet-graph /content/flynet-release/flynet-graph.npz \
+  --flynet-graph-metadata /content/flynet-release/flynet-graph.json \
+  --flynet-config /content/flynet-release/flynet-config.json \
+  --engine stockfish --depth 3 --max-plies 40
+```
+
+## Publish the independent model artifact
+
+The GitHub source distribution and Hugging Face model distribution are
+separate. The model repository contains the actual SafeTensors weights, the
+generated sparse graph, config, optional labeled dataset, training history,
+model card, and release receipt. It does not mirror the source tree.
+
+After the source commit has been pushed and the release bundle passes local
+validation, publish from Colab using the runtime secrets `HF_TOKEN` and
+`GITHUB_ACCESS_TOKEN`:
+
+```bash
+!python scripts/publish_flynet_model.py \
+  --source-dir /content/flychess \
+  --release-dir /content/flynet-release \
+  --dataset /content/flynet-dataset.npz \
+  --repo-id YOUR_HF_NAMESPACE/flychess \
+  --prune
+```
+
+The publisher refuses dirty or stale source checkouts, private home-path
+references, malformed graph/config/weights, missing random-initialization
+provenance, failed tests, or an unexpected final Hub file set. `--prune` is
+explicit because it removes stale files outside the new model-only payload.
+
+## Measuring “100× better”
+
+“100× better” is a target, not a result that can be assumed from a larger
+graph. The comparison harness must use the same fixed FEN suite, Stockfish
+depth, time budget, hardware, and color balance for every candidate. It should
+report at least:
+
+- legal-move rate;
+- top-1 and top-5 teacher agreement;
+- centipawn loss against the teacher;
+- p50/p95 decision latency and memory use;
+- head-to-head game score over a seeded suite;
+- ablations for graph size, recurrent steps, dataset size, and teacher depth.
+
+Only a release receipt containing those measurements can support a claim of
+improvement. Training loss or a single demonstration is not sufficient.
+
+## Other experiment modes
+
+Record a replayable baseline game:
 
 ```bash
 ~/.venv/bin/flychess --depth 3 --max-plies 40 \
   --record runs/game.jsonl --result runs/result.json
 ```
 
-Run the graph backend with a connectome edge-list JSON file:
+Run the small JSON edge-list backend:
 
 ```bash
 ~/.venv/bin/flychess --connectome examples/tiny-connectome.json \
   --neural-steps 2 --depth 2 --max-plies 24
 ```
 
-## Run the public ChessFly artifact
-
-The optional ChessFly runtime can load the graph and weights used by the
-public demo. The graph is downloaded from the demo Space, while the learned
-weights are downloaded from the model repository; neither is vendored in this
-repository. Install the isolated runtime explicitly:
-
-```bash
-~/.venv/bin/python -m pip install -e '.[chessfly]'
-```
-
-Then construct a policy after acquiring and checksum-recording
-`connectome.bin.gz`, `neurons.bin.gz`, and `flynet.safetensors`:
-
-```python
-from flychess.chessfly import ChessFlyModel, ChessFlyPolicy
-
-model = ChessFlyModel.from_artifacts(
-    "data/chessfly/connectome.bin.gz",
-    "data/chessfly/neurons.bin.gz",
-    "data/chessfly/flynet.safetensors",
-)
-fly = ChessFlyPolicy(model)
-move = fly.select_move(board)
-print(move, fly.win_probability, fly.last_readout)
-```
-
-The adapter matches the public worker's 780-feature encoding, black-turn
-mirroring, 1,968-action space, target-row CSR propagation, five calibrated
-steps, decoder heads, and post-readout legal mask. It is a compatibility layer
-for a FlyWire-derived model, not biological MaleCNS calibration. Keep the
-model's graph license and source citations with any acquired artifacts.
-
-## Publish the model artifact from Colab
-
-The GitHub source distribution and the Hugging Face model distribution are
-separate by design. The model repository contains the SafeTensors weights,
-model card, architecture metadata, and a release receipt; it does not mirror
-the Python source tree. From a Colab checkout with `HF_TOKEN` and
-`GITHUB_ACCESS_TOKEN` stored as runtime secrets, run:
-
-```bash
-python scripts/publish_hf_model.py \
-  --weights /content/chessfly-flynet.safetensors \
-  --source-dir /content/flychess \
-  --prune-source-mirror
-```
-
-The publisher validates the tensor keys and shapes, checks the source path
-hygiene, runs the test suite, records a SHA-256 receipt, uploads the model,
-removes only the audited source-mirror paths, and downloads the published
-weights again to verify the remote checksum. It never prints credentials or
-the Hub account name.
-
-Useful options:
-
-```text
---engine PATH       Stockfish executable (default: stockfish on PATH)
---fly-color COLOR   white or black
---depth N           Stockfish search depth
---max-plies N       Stop after N half-moves
---seed N            Select a reproducible surrogate policy
---connectome PATH   Use a validated connectome edge-list policy
---neural-steps N    Connectome simulation steps per fly turn
---fen FEN           Start from a specific position
---record PATH       Write a replayable JSONL experiment log
---result PATH       Write the final result JSON alongside --record
-```
-
-## Development roadmap
-
-1. Fit the exposed dynamics parameters against held-out functional targets and
-   report calibration error separately from chess performance.
-2. Align MaleCNS annotations with FlyWire cell types and morphology without
-   merging the male and female raw connectomes.
-3. Replace the generic graph's handcrafted sensory projection with a documented
-   photoreceptor interface.
-4. Replace the generic output hash with a calibrated, experiment-specific
-   neural readout while keeping legal-move masking outside the brain model.
-5. Add reward-conditioned experiments and frozen/shuffled controls before
-   making any claim about learning or chess skill.
+The comparison adapter and its artifact-specific assumptions are documented
+separately so they cannot be mistaken for FlyNet provenance.
 
 ## Scientific boundary
 
-This project will use precise language: a simulated connectome is not a living
-fly, and a game-playing demo is not evidence of consciousness or biological
-equivalence. Any future connectome backend will document which parts come from
-measured data and which parts are engineering assumptions.
+Flychess uses precise language: a simulated graph is not a living fly, and a
+game-playing model is not evidence of consciousness or biological equivalence.
+Any future MaleCNS/FlyWire calibration must preserve source identity, node-ID
+namespace, graph version, sign policy, held-out functional targets, and the
+boundary between measured data and engineering assumptions.

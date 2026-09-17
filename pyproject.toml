@@ -24,6 +24,11 @@ chessfly = [
   "safetensors>=0.4",
   "torch>=2.0",
 ]
+flynet = [
+  "numpy>=1.24",
+  "safetensors>=0.4",
+  "torch>=2.0",
+]
 
 [project.scripts]
 flychess = "flychess.cli:main"

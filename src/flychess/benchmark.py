@@ -1,11 +1,12 @@
-"""Reproducible ChessFly-vs-Stockfish benchmark helpers."""
+"""Reproducible Flychess-policy-vs-Stockfish benchmark helpers."""
 
 from __future__ import annotations
 
 import statistics
 import time
 from dataclasses import dataclass
-from typing import Any, Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 import chess
 
@@ -66,34 +67,79 @@ def benchmark_chessfly(
     depth: int = 2,
     fens: Sequence[str] = DEFAULT_BENCHMARK_FENS,
 ) -> dict[str, Any]:
-    """Compare selected legal moves with a fixed-depth Stockfish reference."""
-    policy = ChessFlyPolicy(model)
+    """Compare the legacy compatibility policy with a fixed-depth reference."""
+    return benchmark_policy(
+        ChessFlyPolicy(model),
+        label="legacy-comparison",
+        model_metadata=model.graph.summary(),
+        engine_path=engine_path,
+        depth=depth,
+        fens=fens,
+    )
+
+
+def benchmark_flynet(
+    model: Any,
+    *,
+    engine_path: str = "stockfish",
+    depth: int = 2,
+    fens: Sequence[str] = DEFAULT_BENCHMARK_FENS,
+) -> dict[str, Any]:
+    """Compare an independent FlyNet policy with a fixed-depth reference."""
+
+    from .flynet import FlyNetPolicy
+
+    return benchmark_policy(
+        FlyNetPolicy(model),
+        label="flynet",
+        model_metadata=model.graph.summary(),
+        engine_path=engine_path,
+        depth=depth,
+        fens=fens,
+    )
+
+
+def benchmark_policy(
+    policy: Any,
+    *,
+    label: str,
+    model_metadata: Mapping[str, Any] | None = None,
+    engine_path: str = "stockfish",
+    depth: int = 2,
+    fens: Sequence[str] = DEFAULT_BENCHMARK_FENS,
+) -> dict[str, Any]:
+    """Benchmark any legal-move policy against one fixed engine configuration."""
+
     rows: list[BenchmarkRow] = []
     with StockfishEngine(path=engine_path, depth=depth) as engine:
         for index, fen in enumerate(fens):
             board = chess.Board(fen)
-            engine_move = engine.choose_move(board)
+            engine_moves = engine.top_moves(board, count=5)
+            engine_move = engine_moves[0] if engine_moves else engine.choose_move(board)
             started = time.perf_counter()
             fly_move = policy.select_move(board)
             latency_ms = (time.perf_counter() - started) * 1000.0
             candidates = policy.last_readout.candidates if policy.last_readout is not None else ()
             top5 = {candidate.uci for candidate in candidates[:5]}
-            rows.append(BenchmarkRow(
-                index=index,
-                fen=fen,
-                engine_move=engine_move.uci(),
-                fly_move=fly_move.uci(),
-                legal=fly_move in board.legal_moves,
-                engine_top1=fly_move == engine_move,
-                engine_top5=engine_move.uci() in top5,
-                latency_ms=latency_ms,
-                candidate_count=len(candidates),
-            ))
+            rows.append(
+                BenchmarkRow(
+                    index=index,
+                    fen=fen,
+                    engine_move=engine_move.uci(),
+                    fly_move=fly_move.uci(),
+                    legal=fly_move in board.legal_moves,
+                    engine_top1=fly_move == engine_move,
+                    engine_top5=engine_move.uci() in top5,
+                    latency_ms=latency_ms,
+                    candidate_count=len(candidates),
+                )
+            )
     latencies = [row.latency_ms for row in rows]
     total = len(rows)
     return {
+        "policy": label,
         "engine": {"path": engine_path, "depth": depth},
-        "model": model.graph.summary(),
+        "model": dict(model_metadata or {}),
         "positions": total,
         "legal_rate": sum(row.legal for row in rows) / total if total else 0.0,
         "engine_top1_rate": sum(row.engine_top1 for row in rows) / total if total else 0.0,
@@ -108,4 +154,39 @@ def benchmark_chessfly(
     }
 
 
-__all__ = ["BenchmarkRow", "DEFAULT_BENCHMARK_FENS", "benchmark_chessfly"]
+def compare_policies(
+    policies: Mapping[str, Any],
+    *,
+    engine_path: str = "stockfish",
+    depth: int = 2,
+    fens: Sequence[str] = DEFAULT_BENCHMARK_FENS,
+) -> dict[str, Any]:
+    """Run named policies on the same FEN suite for apples-to-apples reports."""
+
+    reports: dict[str, Any] = {}
+    for label, policy in policies.items():
+        model_metadata = getattr(getattr(policy, "model", None), "graph", None)
+        metadata = model_metadata.summary() if model_metadata is not None else {}
+        reports[label] = benchmark_policy(
+            policy,
+            label=label,
+            model_metadata=metadata,
+            engine_path=engine_path,
+            depth=depth,
+            fens=fens,
+        )
+    return {
+        "engine": {"path": engine_path, "depth": depth},
+        "positions": len(fens),
+        "policies": reports,
+    }
+
+
+__all__ = [
+    "BenchmarkRow",
+    "DEFAULT_BENCHMARK_FENS",
+    "benchmark_chessfly",
+    "benchmark_flynet",
+    "benchmark_policy",
+    "compare_policies",
+]
