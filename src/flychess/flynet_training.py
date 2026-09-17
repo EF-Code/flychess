@@ -438,6 +438,9 @@ def train_flynet(
         running_loss = 0.0
         seen = 0
         for batch_features, batch_actions, batch_values in loader:
+            batch_features = batch_features.to(model.device)
+            batch_actions = batch_actions.to(model.device)
+            batch_values = batch_values.to(model.device)
             optimizer.zero_grad(set_to_none=True)
             output = model.forward(batch_features)
             loss = cross_entropy(output.policy_logits, batch_actions) + value_weight * mse(output.value, batch_values)
