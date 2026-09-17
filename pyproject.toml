@@ -19,6 +19,11 @@ dev = [
 calibration = [
   "pyarrow>=15",
 ]
+chessfly = [
+  "numpy>=1.24",
+  "safetensors>=0.4",
+  "torch>=2.0",
+]
 
 [project.scripts]
 flychess = "flychess.cli:main"
