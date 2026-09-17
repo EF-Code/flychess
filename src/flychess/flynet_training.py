@@ -290,7 +290,7 @@ def _set_deterministic_seed(torch: Any, seed: int) -> None:
         torch.cuda.manual_seed_all(seed)
 
 
-def _metric_dict(logits: Any, values: Any, actions: Any) -> dict[str, float]:
+def _metric_dict(logits: Any, actions: Any) -> dict[str, float]:
     _torch, _nn, _data = _require_torch()
     topk = logits.topk(min(5, logits.shape[1]), dim=1).indices
     top1 = (topk[:, 0] == actions).float().mean().item()
@@ -321,7 +321,7 @@ def _evaluate_model(model: FlyNetModel, features: Any, actions: Any, values: Any
     combined_predictions = torch.cat(predictions, dim=0)
     combined_actions = torch.cat(targets, dim=0)
     combined_values = torch.cat(value_targets, dim=0)
-    metrics = _metric_dict(combined_logits, combined_predictions, combined_actions)
+    metrics = _metric_dict(combined_logits, combined_actions)
     metrics["value_mae"] = (combined_predictions - combined_values).abs().mean().item()
     return metrics
 
