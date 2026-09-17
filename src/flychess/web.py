@@ -25,6 +25,7 @@ from urllib.parse import unquote, urlsplit
 import chess
 
 from .brain import SurrogateFlyBrain
+from .chessfly import ChessFlyModel, ChessFlyPolicy
 from .connectome import load_connectome
 from .connectome_policy import ConnectomeFlyBrain
 from .engine import StockfishEngine
@@ -158,7 +159,7 @@ def validate_options(
     if not isinstance(fly_color, str) or fly_color not in {"white", "black"}:
         raise WebRequestError("fly_color must be 'white' or 'black'")
     validated_seed = _bounded_int(seed, name="seed", minimum=MIN_SEED, maximum=MAX_SEED)
-    if policy not in {"surrogate", "connectome"}:
+    if policy not in {"surrogate", "connectome", "chessfly"}:
         raise ValueError("policy must be 'surrogate' or 'connectome'")
     validated_neural_steps = _bounded_int(neural_steps, name="neural_steps", minimum=1, maximum=100)
     return GameOptions(
@@ -212,21 +213,43 @@ def _validate_connectome_path(path: str | Path | None) -> str | None:
     return str(candidate)
 
 
+def _validate_chessfly_paths(
+    connectome_path: str | Path | None,
+    neurons_path: str | Path | None,
+    weights_path: str | Path | None,
+) -> tuple[str, str, str] | None:
+    values = (connectome_path, neurons_path, weights_path)
+    if all(value is None for value in values):
+        return None
+    if any(value is None for value in values):
+        raise ValueError("all ChessFly artifact paths are required together")
+    resolved: list[str] = []
+    for label, value in zip(("connectome", "neurons", "weights"), values):
+        if not isinstance(value, (str, Path)) or not str(value).strip():
+            raise ValueError(f"ChessFly {label} path must be a non-empty path")
+        candidate = Path(value).expanduser().resolve()
+        if not candidate.is_file():
+            raise ValueError(f"ChessFly {label} file does not exist: {candidate}")
+        resolved.append(str(candidate))
+    return tuple(resolved)  # type: ignore[return-value]
+
+
 def run_bounded_game(
     engine_path: str,
     options: GameOptions,
     connectome_path: str | None = None,
     on_progress: ProgressCallback | None = None,
+    *,
+    chessfly_model: ChessFlyModel | None = None,
 ) -> GameResult:
-    """Run one server-authorized game using the existing package APIs.
+    """Run one server-authorized game using a fixed server configuration."""
 
-    ``engine_path`` comes from the process that started the web server.  It is
-    intentionally not exposed in the JSON request schema.  ``StockfishEngine``
-    owns the UCI process lifecycle and does not invoke a shell.
-    """
-
+    if connectome_path is not None and chessfly_model is not None:
+        raise ValueError("connectome and ChessFly policies are mutually exclusive")
     fly_color = chess.WHITE if options.fly_color == "white" else chess.BLACK
-    if connectome_path is None:
+    if chessfly_model is not None:
+        fly = ChessFlyPolicy(chessfly_model)
+    elif connectome_path is None:
         fly = SurrogateFlyBrain(seed=options.seed)
     else:
         fly = ConnectomeFlyBrain(
@@ -273,6 +296,7 @@ def _decision_payload(record: DecisionRecord) -> dict[str, Any]:
 
 def _base_state(options: GameOptions, *, status: str, message: str) -> dict[str, Any]:
     is_surrogate = options.policy == "surrogate"
+    policy_names = {"surrogate": "SurrogateFlyBrain", "connectome": "ConnectomeFlyBrain", "chessfly": "ChessFlyPolicy"}
     return {
         "ok": True,
         "status": status,
@@ -290,8 +314,9 @@ def _base_state(options: GameOptions, *, status: str, message: str) -> dict[str,
         "outcome_detail": None,
         "stopped_at_limit": False,
         "fly": {
-            "policy": "SurrogateFlyBrain" if is_surrogate else "ConnectomeFlyBrain",
+            "policy": policy_names[options.policy],
             "is_surrogate": is_surrogate,
+            "is_chessfly": options.policy == "chessfly",
             "color": options.fly_color,
             "seed": options.seed,
             "neural_steps": options.neural_steps,
@@ -369,11 +394,31 @@ class FlychessWebApp:
         seed: int = 17,
         connectome_path: str | Path | None = None,
         neural_steps: int = 2,
+        chessfly_connectome_path: str | Path | None = None,
+        chessfly_neurons_path: str | Path | None = None,
+        chessfly_weights_path: str | Path | None = None,
+        chessfly_device: str = "cpu",
+        chessfly_cpu_threads: int | None = None,
         callback: GameCallback | None = None,
     ) -> None:
         self.engine_path = _validate_engine_path(engine_path)
         self.connectome_path = _validate_connectome_path(connectome_path)
-        policy = "connectome" if self.connectome_path is not None else "surrogate"
+        self.chessfly_paths = _validate_chessfly_paths(chessfly_connectome_path, chessfly_neurons_path, chessfly_weights_path)
+        if self.connectome_path is not None and self.chessfly_paths is not None:
+            raise ValueError("connectome and ChessFly policies are mutually exclusive")
+        self.chessfly_device = chessfly_device
+        if self.chessfly_paths is None:
+            self.chessfly_model = None
+        else:
+            try:
+                self.chessfly_model = ChessFlyModel.from_artifacts(
+                    *self.chessfly_paths,
+                    device=chessfly_device,
+                    cpu_threads=chessfly_cpu_threads,
+                )
+            except Exception as exc:
+                raise ValueError(f"ChessFly artifacts are invalid: {exc}") from exc
+        policy = "chessfly" if self.chessfly_model is not None else ("connectome" if self.connectome_path is not None else "surrogate")
         self.defaults = validate_options(
             depth=depth,
             max_plies=max_plies,
@@ -386,6 +431,7 @@ class FlychessWebApp:
                 configured_engine_path,
                 options,
                 self.connectome_path,
+                chessfly_model=self.chessfly_model,
             )
         )
         if callback is None:
@@ -394,6 +440,7 @@ class FlychessWebApp:
                 options,
                 self.connectome_path,
                 on_progress=on_progress,
+                chessfly_model=self.chessfly_model,
             )
         else:
             self._runner = lambda configured_engine_path, options, _on_progress: callback(
@@ -637,6 +684,11 @@ def create_server(
     seed: int = 17,
     connectome_path: str | Path | None = None,
     neural_steps: int = 2,
+    chessfly_connectome_path: str | Path | None = None,
+    chessfly_neurons_path: str | Path | None = None,
+    chessfly_weights_path: str | Path | None = None,
+    chessfly_device: str = "cpu",
+    chessfly_cpu_threads: int | None = None,
     callback: GameCallback | None = None,
 ) -> FlychessHTTPServer:
     """Create a server; by default it binds only to IPv4 loopback."""
@@ -650,6 +702,11 @@ def create_server(
         seed=seed,
         connectome_path=connectome_path,
         neural_steps=neural_steps,
+        chessfly_connectome_path=chessfly_connectome_path,
+        chessfly_neurons_path=chessfly_neurons_path,
+        chessfly_weights_path=chessfly_weights_path,
+        chessfly_device=chessfly_device,
+        chessfly_cpu_threads=chessfly_cpu_threads,
         callback=callback,
     )
     return FlychessHTTPServer((host, port), app)
@@ -667,6 +724,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-plies", type=int, default=DEFAULT_MAX_PLIES)
     parser.add_argument("--seed", type=int, default=17)
     parser.add_argument("--connectome", type=Path, default=None, help="Use a validated connectome JSON edge list")
+    parser.add_argument("--chessfly-connectome", type=Path, default=None, help="Public ChessFly connectome.bin.gz artifact")
+    parser.add_argument("--chessfly-neurons", type=Path, default=None, help="Public ChessFly neurons.bin.gz artifact")
+    parser.add_argument("--chessfly-weights", type=Path, default=None, help="Public ChessFly flynet.safetensors artifact")
+    parser.add_argument("--chessfly-device", default="cpu", help="PyTorch device for ChessFly (default: cpu)")
+    parser.add_argument("--chessfly-cpu-threads", type=int, default=None, help="Optional PyTorch CPU thread count")
     parser.add_argument("--neural-steps", type=int, default=2, help="Connectome steps per fly turn")
     return parser
 
@@ -682,6 +744,11 @@ def main(argv: list[str] | None = None) -> int:
         seed=args.seed,
         connectome_path=args.connectome,
         neural_steps=args.neural_steps,
+        chessfly_connectome_path=args.chessfly_connectome,
+        chessfly_neurons_path=args.chessfly_neurons,
+        chessfly_weights_path=args.chessfly_weights,
+        chessfly_device=args.chessfly_device,
+        chessfly_cpu_threads=args.chessfly_cpu_threads,
     )
     host, port = server.server_address[:2]
     print(f"flychess web UI: http://{host}:{port}")

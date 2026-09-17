@@ -87,6 +87,30 @@ def _torch() -> Any:
     return torch
 
 
+MIN_CPU_THREADS = 1
+MAX_CPU_THREADS = 256
+
+
+def validate_cpu_threads(value):
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ChessFlyFormatError('cpu_threads must be an integer or None')
+    if not MIN_CPU_THREADS <= value <= MAX_CPU_THREADS:
+        raise ChessFlyFormatError(
+            f'cpu_threads must be between {MIN_CPU_THREADS} and {MAX_CPU_THREADS}'
+        )
+    return value
+
+
+def configure_cpu_threads(value):
+    'Set the process-wide PyTorch CPU thread count for explicit deployments.'
+    validated = validate_cpu_threads(value)
+    if validated is not None:
+        _torch().set_num_threads(validated)
+    return validated
+
+
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -472,8 +496,11 @@ class ChessFlyForward:
 class ChessFlyModel:
     """Run the public five-step ChessFly dynamics over a validated graph."""
 
-    def __init__(self, graph: ChessFlyGraph, weights: ChessFlyWeights, *, device: str = "cpu") -> None:
+    def __init__(self, graph: ChessFlyGraph, weights: ChessFlyWeights, *, device: str = "cpu", cpu_threads: int | None = None) -> None:
         torch = _torch()
+        if cpu_threads is not None and device != "cpu":
+            raise ChessFlyFormatError('cpu_threads is only valid for the CPU device')
+        self.cpu_threads = configure_cpu_threads(cpu_threads)
         if graph.node_count != int(weights.tensors["scale"].shape[1]):
             raise ChessFlyFormatError("graph neuron count disagrees with scale tensor")
         if len(graph.inputs) != weights.encoder_inputs:
@@ -535,11 +562,13 @@ class ChessFlyModel:
         weights_path: str | Path,
         *,
         device: str = "cpu",
+        cpu_threads: int | None = None,
     ) -> "ChessFlyModel":
         return cls(
             ChessFlyGraph.from_files(connectome_path, neurons_path),
             ChessFlyWeights.from_safetensors(weights_path, device=device),
             device=device,
+            cpu_threads=cpu_threads,
         )
 
 
@@ -677,6 +706,7 @@ __all__ = [
     "ChessFlyInferenceError",
     "ChessFlyModel",
     "ChessFlyPolicy",
+    "configure_cpu_threads",
     "ChessFlyWeights",
     "build_action_space",
     "canonical_fen",
