@@ -170,8 +170,8 @@ def validate_release(release_dir: Path) -> tuple[dict[str, Any], dict[str, list[
     if tensor_shapes != expected_shapes:
         raise RuntimeError(f"FlyNet tensor contract mismatch: {tensor_shapes}")
     training = read_object(release_dir / "results/training.json")
-    if training.get("schema_version") != "flynet.training/v1":
-        raise RuntimeError("release training receipt is not a FlyNet v1 receipt")
+    if training.get("schema_version") not in {"flynet.training/v1", "flynet.large_training/v1"}:
+        raise RuntimeError("release training receipt is not a supported FlyNet v1 receipt")
     return config, tensor_shapes, training
 
 
