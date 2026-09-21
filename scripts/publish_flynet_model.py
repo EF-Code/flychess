@@ -324,13 +324,17 @@ def main(argv: list[str] | None = None) -> int:
 
     hf_token = read_secret("HF_TOKEN")
     github_token = read_secret("GITHUB_ACCESS_TOKEN")
-    if not hf_token or not github_token:
-        raise RuntimeError("required runtime secrets are unavailable")
+    if not hf_token:
+        raise RuntimeError("HF_TOKEN is unavailable")
     source_dir = args.source_dir.resolve()
     release_dir = args.release_dir.resolve()
     if run(["git", "status", "--porcelain"], cwd=source_dir):
         raise RuntimeError("source checkout is dirty; refusing to publish")
-    git_environment = git_env(github_token)
+    # The canonical source repository is public, so a GitHub token is useful
+    # but not required.  This keeps Colab publication working when optional
+    # secret access is unavailable while preserving authenticated fetches when
+    # GITHUB_ACCESS_TOKEN is present.
+    git_environment = git_env(github_token) if github_token else os.environ.copy()
     run(["git", "fetch", "origin", "master"], cwd=source_dir, env=git_environment)
     source_sha = run(["git", "rev-parse", "HEAD"], cwd=source_dir)
     remote_sha = run(["git", "rev-parse", "FETCH_HEAD"], cwd=source_dir)
