@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "flychess"
 version = "0.1.0"
-description = "A simulated fruit-fly brain playing chess against Stockfish"
+description = "Reproducible sparse graph policies for chess with Stockfish evaluation"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

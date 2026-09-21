@@ -1,7 +1,7 @@
 # flychess
 
-Flychess is a reproducible experiment in training a fly-inspired sparse neural
-policy to play chess against [Stockfish](https://stockfishchess.org/).
+Flychess is a reproducible research project for sparse recurrent graph policies
+that play chess and are evaluated against [Stockfish](https://stockfishchess.org/).
 
 ## Current status
 
@@ -20,11 +20,19 @@ The source repository now contains an independent FlyNet track:
 - tests covering graph/dataset contracts, checksum validation, game plumbing,
   replay integrity, and HTTP boundaries.
 
-The independent weights are not committed to GitHub. They are generated in
-Colab from random initialization and released only with their graph, config,
-training history, dataset receipt, and SHA-256 manifest. Until that Colab run
-has completed, the repository is a tested training pipeline—not evidence of a
-trained playing-strength result.
+The first independent FlyNet release was trained from a seeded random
+initialization in a Colab T4 runtime and published as a model-only artifact.
+The release includes the SafeTensors weights, generated graph, configuration,
+training history, and SHA-256 release receipt. Its reported validation metrics
+are 20.84% top-1 teacher agreement, 45.34% top-5 teacher agreement, and
+0.3066 value mean absolute error on 5,000 held-out Stockfish-labelled
+positions. These are teacher-agreement and value-prediction measurements, not
+an Elo rating or evidence of human-level playing strength.
+
+The current release was trained on 500,000 Stockfish-labelled positions for
+three epochs with a 1,024-node graph, 32,000 signed directed edges, and three
+recurrent graph updates. The model repository contains the model artifacts;
+the source repository contains the implementation and verification tooling.
 
 FlyNet's graph is an engineering abstraction, not a biological connectome
 reconstruction. MaleCNS/FlyWire calibration remains a separate provenance-
@@ -83,8 +91,9 @@ it does not load an existing neural model:
   --output /content/flynet-dataset.npz
 ```
 
-Train from a seeded random initialization and write the complete release
-bundle:
+Train a small baseline from a seeded random initialization and write a complete
+release bundle. The command below is a local or Colab example; it is not the
+configuration used for the published 500,000-position release:
 
 ```bash
 !python scripts/train_flynet.py \
@@ -129,8 +138,9 @@ generated sparse graph, config, optional labeled dataset, training history,
 model card, and release receipt. It does not mirror the source tree.
 
 After the source commit has been pushed and the release bundle passes local
-validation, publish from Colab using the runtime secrets `HF_TOKEN` and
-`GITHUB_ACCESS_TOKEN`:
+validation, publish from Colab using the `HF_TOKEN` runtime secret. A
+`GITHUB_ACCESS_TOKEN` is only required when the source checkout cannot be
+read anonymously.
 
 ```bash
 !python scripts/publish_flynet_model.py \

@@ -42,8 +42,8 @@ cognition, consciousness, or biological equivalence.
 | Input features | 851 |
 | Policy actions | 4,544 fixed UCI move shapes |
 | Value output | Scalar in `[-1, 1]`, from the side-to-move perspective |
-| Recurrent computation | 6 synchronous graph updates in the default release |
-| Default graph | 2,048 nodes and 64,000 signed directed edges |
+| Recurrent computation | 3 synchronous graph updates in the published release |
+| Published graph | 1,024 nodes and 32,000 signed directed edges |
 | Legal move handling | Applied by the chess environment after neural scoring |
 | Serialization | PyTorch tensors in SafeTensors; graph in compressed NumPy arrays |
 
@@ -65,14 +65,32 @@ policy_logits = policy_head(latent)
 value = tanh(value_head(latent))
 ```
 
+## Published release
+
+The published release was trained from a seeded random initialization on
+500,000 Stockfish-labelled positions for three epochs. The training receipt
+records 495,000 training positions and 5,000 held-out validation positions.
+On that held-out set, the release achieved:
+
+| Metric | Result |
+| --- | ---: |
+| Top-1 teacher agreement | 20.84% |
+| Top-5 teacher agreement | 45.34% |
+| Value mean absolute error | 0.3066 |
+
+These metrics measure agreement with the Stockfish teacher and accuracy of the
+bounded value head. They do not establish playing strength, Elo, or biological
+validity. A playing-strength claim requires a separate fixed game benchmark
+with documented engine settings, time controls, colors, and evaluation suite.
+
 ## Repository contents
 
 - `flynet.safetensors` — learned FlyNet tensors;
 - `flynet-graph.npz` — the actual generated sparse graph;
 - `flynet-graph.json` — graph schema, seed, ports, and region counts;
 - `flynet-config.json` — model dimensions and provenance flags;
-- `flynet-dataset.npz` — optional labeled training artifact when included in
-  the release;
+- `flynet-dataset.npz` — optional labeled training artifact when included in a
+  release;
 - `flynet-dataset.json` — optional dataset schema, sampler, teacher, and hash;
 - `results/training.json` — epoch history and held-out metrics;
 - `results/release.json` — checksums and verification receipt;

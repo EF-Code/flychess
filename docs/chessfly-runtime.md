@@ -6,10 +6,10 @@
 > weights. The primary Flychess model release is documented in
 > `docs/huggingface-model-card.md`.
 
-Flychess now has an optional compatibility runtime for the public
-[ChessFly model](https://huggingface.co/mlabonne/chessfly) and its companion
-[demo Space](https://huggingface.co/spaces/mlabonne/chessfly). This is useful as
-an executable reference point for the next MaleCNS/FlyWire calibration stage.
+Flychess has an optional compatibility runtime for a public external model and
+its companion demo. Use this path only for interoperability and controlled
+comparative runtime tests. It is not part of FlyNet training and is not a
+source of FlyNet weights or biological calibration data.
 
 ## Artifact boundary
 

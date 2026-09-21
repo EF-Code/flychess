@@ -14,14 +14,25 @@ This makes runtime interruption recoverable without trusting an incomplete
 `.npz` file. The model remains a from-scratch FlyNet artifact; Stockfish is
 only the move/value teacher.
 
+## Published 500,000-position release
+
+The first completed large-run release used 500,000 Stockfish-labelled
+positions, three training epochs, and a 1,024-node graph with 32,000 signed
+directed edges. Its held-out validation set contained 5,000 positions. The
+release reported 20.84% top-1 teacher agreement, 45.34% top-5 teacher
+agreement, and 0.3066 value mean absolute error. These results measure the
+supervised task defined by the release; they are not a playing-strength rating.
+
 ## Capacity planning
 
 A 50M-label run means 50 million labelled positions, not just 50 million
-game plies. The live T4 Colab probe on 2026-09-17 measured approximately
+game plies. A live T4 Colab probe on 2026-09-17 measured approximately
 57 labels/sec at depth 3 and 66 labels/sec at depth 2. That is roughly 212–243
-hours for one CPU-bound runtime, before restarts. Multiple Stockfish workers did
-not improve this particular runtime, so the job should be split across durable
-shard ranges or separate runtimes rather than launched as one blocking cell.
+hours for one CPU-bound runtime, before restarts. This is a historical
+single-runtime measurement, not a guaranteed throughput figure. Multiple
+Stockfish workers did not improve that particular runtime, so a future run
+should be split across durable shard ranges or separate runtimes rather than
+launched as one blocking cell.
 
 Keeping the original float32 feature matrix would require about 170 GB before
 FENs and compression. Shards store the encoder output as float16 and retain
